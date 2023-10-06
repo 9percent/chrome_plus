@@ -430,7 +430,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        if (wParam == WM_RBUTTONDOWN && !IsPressed(VK_SHIFT) && IsOnOneTab)
+        if (wParam == WM_RBUTTONDOWN && !IsPressed(VK_SHIFT))
         {
             HWND hwnd = WindowFromPoint(pmouse->pt);
             NodePtr TopContainerView = GetTopContainerView(hwnd);
