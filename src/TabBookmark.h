@@ -400,7 +400,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        if (wParam == WM_LBUTTONDBLCLK && IsOnOneTab(TopContainerView, pmouse->pt))
+        if (wParam == WM_LBUTTONDBLCLK)
         {
             HWND hwnd = WindowFromPoint(pmouse->pt);
             NodePtr TopContainerView = GetTopContainerView(hwnd);
