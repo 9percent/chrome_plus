@@ -400,7 +400,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        if (wParam == WM_LBUTTONDBLCLK)
+        if (wParam == WM_LBUTTONDBLCLK && IsOnOneTab(TopContainerView, pmouse->pt))
         {
             HWND hwnd = WindowFromPoint(pmouse->pt);
             NodePtr TopContainerView = GetTopContainerView(hwnd);
@@ -430,7 +430,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        if (wParam == WM_RBUTTONDOWN && !IsPressed(VK_SHIFT))
+        if (wParam == WM_RBUTTONDOWN && !IsPressed(VK_SHIFT) && IsOnOneTab(TopContainerView, pmouse->pt))
         {
             HWND hwnd = WindowFromPoint(pmouse->pt);
             NodePtr TopContainerView = GetTopContainerView(hwnd);
