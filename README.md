@@ -7,8 +7,8 @@
 - 便携设计，程序放在 App 目录，数据放在 Data 目录（不兼容原版数据，可以重装系统换电脑不丢数据）
 - 移除更新错误警告（因为是绿色版没有自动更新功能）
 # 获取
-采用 GitHub Actions 自动编译发布，下载地址：[https://nightly.link/Bush2021/chrome_plus/workflows/build/main](https://nightly.link/Bush2021/chrome_plus/workflows/build/main)
+采用 GitHub Actions 自动编译发布
 
-[![build status](https://github.com/Bush2021/chrome_plus/actions/workflows/build.yml/badge.svg)](https://github.com/Bush2021/chrome_plus/actions/workflows/build.yml)
+[![build status](https://github.com/Bush2021/chrome_plus/actions/workflows/build.yml/badge.svg)](https://github.com/styshare/chrome_plus/blob/main/.github/workflows/build.yml)
 # 安装
 dll 放入解压版 Chrome 目录即可
