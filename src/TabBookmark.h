@@ -430,7 +430,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        if (wParam == WM_RBUTTONUP && !IsPressed(VK_SHIFT))
+        if (wParam == WM_RBUTTONDOWN && !IsPressed(VK_SHIFT))
         {
             HWND hwnd = WindowFromPoint(pmouse->pt);
             NodePtr TopContainerView = GetTopContainerView(hwnd);
@@ -443,19 +443,21 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
 
             // 右键关闭
-
-            if (isOnlyOneTab)
+            if (isOnOneTab)
             {
+                if (isOnlyOneTab)
+                {
                     // DebugLog(L"keep_tab");
                     // ExecuteCommand(IDC_NEW_TAB, hwnd);
                     ExecuteCommand(IDC_NEW_TAB);
                     ExecuteCommand(IDC_SELECT_PREVIOUS_TAB);
                     ExecuteCommand(IDC_CLOSE_TAB);
-            }
+                }
                 else
                 {
                     ExecuteCommand(IDC_CLOSE_TAB);
                 }
+            }
         }
 
         if (wParam == WM_MBUTTONUP)
