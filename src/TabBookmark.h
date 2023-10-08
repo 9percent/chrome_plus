@@ -456,10 +456,8 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
                 else
                 {
                     ExecuteCommand(IDC_CLOSE_TAB);
-                    SendOneMouse(MOUSEEVENTF_RIGHTDOWN);
-                    SendOneMouse(MOUSEEVENTF_RIGHTUP);
-                    return 1;
                 }
+                    return 1;
             }
         }
 
