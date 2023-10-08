@@ -252,6 +252,11 @@ bool IsOnOneTab(NodePtr top, POINT pt)
                 TraversalAccessible(PageTabPane, [&flag, &pt](NodePtr child) {
                     if (GetAccessibleRole(child) == ROLE_SYSTEM_PAGETAB)
                     {
+                if (GetAccessibleState(child) & STATE_SYSTEM_SELECTED)
+                {
+                    // 跳过已经选中标签
+                    return false;
+                }
                         GetAccessibleSize(child, [&flag, &pt](RECT rect) {
                             if (PtInRect(&rect, pt))
                             {
@@ -271,44 +276,6 @@ bool IsOnOneTab(NodePtr top, POINT pt)
     return flag;
 }
 
-// 鼠标是否在某个未激活标签上
-bool IsOnOneInactiveTab(NodePtr top, POINT pt)
-{
-    bool flag = false;
-    NodePtr PageTabList = FindPageTabList(top);
-    if (PageTabList)
-    {
-        NodePtr PageTab = FindPageTab(PageTabList);
-    if (TabStrip)
-    {
-    NodePtr TabStrip = GetParentElement(PageTab);
-         TraversalAccessible(TabStrip, [&flag, &pt](NodePtr child) {
-            if (GetAccessibleRole(child) == ROLE_SYSTEM_PAGETAB)
-            {
-                if (GetAccessibleState(child) & STATE_SYSTEM_SELECTED)
-                {
-                    // 跳过已经选中标签
-                    return false;
-                }
-                GetAccessibleSize(child, [&flag, &pt](RECT rect) {
-                    if (PtInRect(&rect, pt))
-                    {
-                        flag = true;
-                    }
-                });
-            }
-            if (flag) child->Release();
-            return flag;
-        });
-        TabStrip->Release();
-    }
-    else
-    {
-        // if (top) DebugLog(L"IsOnOneTab failed");
-    }
-    return flag;
-}
-}
 // 是否只有一个标签
 bool IsOnlyOneTab(NodePtr top)
 {
@@ -481,7 +448,7 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             }
 
             // 右键关闭
-            if (isOnOneTab && IsOnOneInactiveTab)
+            if (isOnOneTab)
             {
                 if (isOnlyOneTab)
                 {
