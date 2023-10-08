@@ -313,10 +313,14 @@ int GetTabIndex(NodePtr node, POINT pt)
     return index;
 }
 
+
+
+
 // 鼠标是否在某个未激活标签上
 bool IsOnOneInactiveTab(NodePtr top, POINT pt, int &index)
 {
     bool flag = false;
+    index = 0;
     NodePtr PageTabList = FindPageTabList(top);
     if (PageTabList)
     {
@@ -353,7 +357,6 @@ bool IsOnOneInactiveTab(NodePtr top, POINT pt, int &index)
     }
     return flag;
 }
-
 // 是否只有一个标签
 bool IsOnlyOneTab(NodePtr top)
 {
@@ -518,16 +521,15 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
             HWND hwnd = WindowFromPoint(pmouse->pt);
             NodePtr TopContainerView = GetTopContainerView(hwnd);
 
-            bool isOnOneTab = IsOnOneTab(TopContainerView, pmouse->pt);
+            bool IsOnOneInactiveTab = IsOnOneInactiveTab(TopContainerView, pmouse->pt);
             bool isOnlyOneTab = IsOnlyOneTab(TopContainerView);
-            bool isOnOneTab = IsOnOneInactiveTab(TopContainerView, pmouse->pt);
 
             if (TopContainerView)
             {
             }
 
             // 右键关闭
-            if (isOnOneTab && IsOnOneInactiveTab)
+            if (IsOnOneInactiveTab)
             {
                 if (isOnlyOneTab)
                 {
