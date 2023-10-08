@@ -272,42 +272,14 @@ bool IsOnOneTab(NodePtr top, POINT pt)
 }
 
 
-// 是否悬停在关闭按钮上
-bool IsOnOneInactiveTabCloseButton(IAccessible *node, POINT pt)
-{
-    bool flag = false;
-    TraversalAccessible(node, [&pt, &flag]
-    (IAccessible* child) {
-        if (GetAccessibleRole(child) == ROLE_SYSTEM_PUSHBUTTON)
-        {
-            GetAccessibleSize(child, [&flag, &pt]
-            (RECT rect) {
-                //调整大小，更精确匹配
-                rect.left += 4;
-                rect.top += 7;
-                rect.right -= 16;
-                rect.bottom -= 6;
-                if (PtInRect(&rect, pt))
-                {
-                    flag = true;
-                }
-            });
-        }
-        return false;
-    });
-    return flag;
-}
-
 // 获取到在第几个tab上
-int GetTabIndex(IAccessible *node, POINT pt)
+int GetTabIndex(NodePtr node, POINT pt)
 {
     std::vector <RECT> tab_rects;
-    TraversalAccessible(node, [&]
-    (IAccessible* child) {
+     TraversalAccessible(node, [&flag, &pt](NodePtr child) {
         if (GetAccessibleRole(child) == ROLE_SYSTEM_PAGETAB)
         {
-            GetAccessibleSize(child, [&]
-            (RECT rect) {
+            GetAccessibleSize(child, [&flag, &pt](RECT rect) {
                 tab_rects.push_back(rect);
             });
         }
@@ -343,16 +315,14 @@ int GetTabIndex(IAccessible *node, POINT pt)
 }
 
 // 鼠标是否在某个未激活标签上
-bool IsOnOneInactiveTab(IAccessible* top, POINT pt, int &index, bool &onclose)
+bool IsOnOneInactiveTab(NodePtr top, POINT pt, int &index)
 {
     bool flag = false;
     index = 0;
-    onclose = false;
-    IAccessible *TabStrip = FindChildElement(top, ROLE_SYSTEM_PAGETABLIST);
+    NodePtr TabStrip = GetParentElement(PageTab);
     if (TabStrip)
     {
-        TraversalAccessible(TabStrip, [&]
-        (IAccessible* child) {
+         TraversalAccessible(TabStrip, [&flag, &pt](NodePtr child) {
             if (GetAccessibleRole(child) == ROLE_SYSTEM_PAGETAB)
             {
                 if (GetAccessibleState(child) & STATE_SYSTEM_SELECTED)
@@ -360,12 +330,10 @@ bool IsOnOneInactiveTab(IAccessible* top, POINT pt, int &index, bool &onclose)
                     // 跳过已经选中标签
                     return false;
                 }
-                GetAccessibleSize(child, [&]
-                (RECT rect) {
+                GetAccessibleSize(child, [&flag, &pt](RECT rect) {
                     if (PtInRect(&rect, pt))
                     {
                         flag = true;
-                        onclose = IsOnOneInactiveTabCloseButton(child, pt);
                         index = GetTabIndex(TabStrip, pt);
                     }
                 });
@@ -377,7 +345,7 @@ bool IsOnOneInactiveTab(IAccessible* top, POINT pt, int &index, bool &onclose)
     }
     else
     {
-        if (top) DebugLog(L"IsOnOneTab failed");
+        // if (top) DebugLog(L"IsOnOneTab failed");
     }
     return flag;
 }
