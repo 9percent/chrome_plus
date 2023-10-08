@@ -271,6 +271,116 @@ bool IsOnOneTab(NodePtr top, POINT pt)
     return flag;
 }
 
+
+// 是否悬停在关闭按钮上
+bool IsOnOneInactiveTabCloseButton(IAccessible *node, POINT pt)
+{
+    bool flag = false;
+    TraversalAccessible(node, [&pt, &flag]
+    (IAccessible* child) {
+        if (GetAccessibleRole(child) == ROLE_SYSTEM_PUSHBUTTON)
+        {
+            GetAccessibleSize(child, [&flag, &pt]
+            (RECT rect) {
+                //调整大小，更精确匹配
+                rect.left += 4;
+                rect.top += 7;
+                rect.right -= 16;
+                rect.bottom -= 6;
+                if (PtInRect(&rect, pt))
+                {
+                    flag = true;
+                }
+            });
+        }
+        return false;
+    });
+    return flag;
+}
+
+// 获取到在第几个tab上
+int GetTabIndex(IAccessible *node, POINT pt)
+{
+    std::vector <RECT> tab_rects;
+    TraversalAccessible(node, [&]
+    (IAccessible* child) {
+        if (GetAccessibleRole(child) == ROLE_SYSTEM_PAGETAB)
+        {
+            GetAccessibleSize(child, [&]
+            (RECT rect) {
+                tab_rects.push_back(rect);
+            });
+        }
+        return false;
+    });
+    std::sort(tab_rects.begin(), tab_rects.end(), [](auto &a, auto &b) {
+        return a.left < b.left;
+    });
+
+    int index = 0;
+    for (auto rect : tab_rects)
+    {
+        index++;
+        if (PtInRect(&rect, pt))
+        {
+            break;
+        }
+    }
+
+    if (index >= 9)
+    {
+        if (index == tab_rects.size())
+        {
+            index = 9;
+        }
+        else
+        {
+            index = 0;
+        }
+
+    }
+    return index;
+}
+
+// 鼠标是否在某个未激活标签上
+bool IsOnOneInactiveTab(IAccessible* top, POINT pt, int &index, bool &onclose)
+{
+    bool flag = false;
+    index = 0;
+    onclose = false;
+    IAccessible *TabStrip = FindChildElement(top, ROLE_SYSTEM_PAGETABLIST);
+    if (TabStrip)
+    {
+        TraversalAccessible(TabStrip, [&]
+        (IAccessible* child) {
+            if (GetAccessibleRole(child) == ROLE_SYSTEM_PAGETAB)
+            {
+                if (GetAccessibleState(child) & STATE_SYSTEM_SELECTED)
+                {
+                    // 跳过已经选中标签
+                    return false;
+                }
+                GetAccessibleSize(child, [&]
+                (RECT rect) {
+                    if (PtInRect(&rect, pt))
+                    {
+                        flag = true;
+                        onclose = IsOnOneInactiveTabCloseButton(child, pt);
+                        index = GetTabIndex(TabStrip, pt);
+                    }
+                });
+            }
+            if (flag) child->Release();
+            return flag;
+        });
+        TabStrip->Release();
+    }
+    else
+    {
+        if (top) DebugLog(L"IsOnOneTab failed");
+    }
+    return flag;
+}
 // 是否只有一个标签
 bool IsOnlyOneTab(NodePtr top)
 {
