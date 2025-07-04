@@ -281,15 +281,17 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
         GetWindowTextW(topHwnd, title, _countof(title));  // 获取窗口标题
 
         // 解析标题中的"Ratio: X.XX"部分
-        const wchar_t* ratioPrefix = L"[";
-        size_t prefixLen = wcslen(ratioPrefix);
-        wchar_t* ratioStart = wcsstr(title, ratioPrefix);
-        if (ratioStart) {
-          ratioStart += prefixLen;  // 定位到数值起始位置
-          wchar_t* ratioEnd = wcschr(ratioStart, ']');  // 找到结束符
-          if (ratioEnd) {
-            *ratioEnd = L'\0';  // 截断字符串便于转换
-            ratio = (float)_wtof(ratioStart);  // 转换为浮点数
+        wchar_t* ratioEnd = wcsrchr(title, L']');
+        if (ratioEnd) {
+            // 在']'左侧查找第一个'['
+            wchar_t* ratioStart = wcsrchr(title, L'[');
+            // 确保'['在']'之前且存在有效区间
+            if (ratioStart && ratioStart < ratioEnd) {
+                size_t ratioStrLen = ratioEnd - ratioStart - 1;
+                wchar_t ratioStr[256] = {0};
+                // 复制中间的数值字符串（跳过'['）
+                wcsncpy(ratioStr, ratioStart + 1, ratioStrLen);
+                ratio = (float)_wtof(ratioStr);  // 转换为浮点数
           }
         }
       }
