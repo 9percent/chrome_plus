@@ -270,6 +270,20 @@ bool HasAnyClassName(
   return std::ranges::contains(expected_class_names, class_name_view);
 }
 
+bool IsValidBookmark(const ComPtr<IUIAutomationElement>& element) {
+  if (!HasAnyClassName(element, {L"BookmarkButton", L"MenuItemView"})) {
+    return false;
+  }
+  const auto full_description =
+      GetStringProperty(element, UIA_FullDescriptionPropertyId);
+  if (!full_description) {
+    return false;
+  }
+  const std::wstring_view view(*full_description);
+  return !view.starts_with(L"javascript:") &&
+         (view.contains(L':') || view.contains(L'.'));
+}
+
 template <typename Visitor>
 bool TraverseDescendantsRaw(const UiaSession& session,
                             const ComPtr<IUIAutomationElement>& root,
@@ -866,22 +880,59 @@ bool IsOnBookmark(POINT pt) {
     return false;
   }
 
-  if (!HasAnyClassName(pointed, {L"BookmarkButton", L"MenuItemView"})) {
+  if (IsValidBookmark(pointed)) {
+    return true;
+  }
+
+  // UIA sometimes returns an `Omnibox Popup` descendant as the top-of-Z-order
+  // element on secondary windows (or monitors), even when a `BookmarkButton`
+  // rect also covers `pt`. Detect that case and re-scan the Chrome window for a
+  // bookmark whose rect contains `pt`. See #238.
+  const bool in_omnibox_popup =
+      FindAncestorByClass(*session, pointed, L"context-menu-container") ||
+      FindAncestorByClass(*session, pointed, L"RoundedOmniboxResultsFrame");
+  if (!in_omnibox_popup) {
     return false;
   }
 
-  const auto full_description =
-      GetStringProperty(pointed, UIA_FullDescriptionPropertyId);
-  if (!full_description) {
+  const HWND window = GetAncestor(WindowFromPoint(pt), GA_ROOT);
+  if (!window || !IsChromeWindow(window)) {
+    return false;
+  }
+  const auto window_element = GetElementFromWindow(*session, window);
+  if (!window_element) {
     return false;
   }
 
-  const std::wstring_view full_description_view(*full_description);
-  const bool is_blocked_scheme =
-      full_description_view.starts_with(L"javascript:");
-  const bool looks_like_url = full_description_view.contains(L':') ||
-                              full_description_view.contains(L'.');
-  return !is_blocked_scheme && looks_like_url;
+  for (const auto& condition : {session->class_conditions.bookmark_button,
+                                session->class_conditions.menu_item_view}) {
+    ComPtr<IUIAutomationElementArray> elements;
+    if (FAILED(window_element->FindAll(TreeScope_Subtree, condition.Get(),
+                                       elements.ReleaseAndGetAddressOf())) ||
+        !elements) {
+      continue;
+    }
+    int length = 0;
+    if (FAILED(elements->get_Length(&length))) {
+      continue;
+    }
+    for (int i = 0; i < length; ++i) {
+      ComPtr<IUIAutomationElement> element;
+      if (FAILED(elements->GetElement(i, element.ReleaseAndGetAddressOf())) ||
+          !element) {
+        continue;
+      }
+      RECT rect;
+      if (FAILED(element->get_CurrentBoundingRectangle(&rect))) {
+        continue;
+      }
+      if (PtInRect(&rect, pt) && IsValidBookmark(element)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 bool IsOmniboxFocused() {
