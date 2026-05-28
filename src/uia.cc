@@ -914,6 +914,15 @@ bool IsOnTabBar(POINT pt) {
 }
 
 bool IsOnBookmark(POINT pt) {
+  // `ElementFromPoint` follows Win32 hit-testing, so a click over the page's
+  // `Chrome_RenderWidgetHostHWND` child window resolves into the web fragment
+  // and the ancestor walk below would scan web content. Chrome UI surfaces
+  // (tab bar, bookmark bar, popups) are all `Chrome_WidgetWin_*` top-level
+  // windows; anything else is web. See commentary above `FindTabHitResult`.
+  if (!IsChromeWindow(WindowFromPoint(pt))) {
+    return false;
+  }
+
   const UiaSession* session = GetUiaSession();
   if (!session) {
     return false;
