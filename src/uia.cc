@@ -808,13 +808,8 @@ ComPtr<IUIAutomationElement> FindBookmarkInContainer(
 // window root walks the page's UIA nodes (500-1000+ and growing with the page,
 // ~50ms), while the same search bounded to `TopContainerView` stays ~7ms and
 // off the page.
-ComPtr<IUIAutomationElement> FindBookmarkCoveringPoint(
-    const UiaSession& session,
-    POINT pt) {
-  const HWND window = GetAncestor(WindowFromPoint(pt), GA_ROOT);
-  if (!window || !IsChromeWindow(window)) {
-    return nullptr;
-  }
+ComPtr<IUIAutomationElement>
+FindBookmarkCoveringPoint(const UiaSession& session, HWND window, POINT pt) {
   const auto window_element = GetElementFromWindow(session, window);
   if (!window_element) {
     return nullptr;
@@ -924,14 +919,15 @@ bool IsOnTabBar(POINT pt) {
 }
 
 bool IsOnBookmark(POINT pt) {
-  // Screen out web content before any UIA work. `WindowFromPoint` (deliberately
-  // without `GA_ROOT`) returns the deepest window under the cursor: over the
-  // page that is the `Chrome_RenderWidgetHostHWND` child, whose class is not
-  // `Chrome_WidgetWin_*`, so it is rejected here. Adding `GA_ROOT` would climb
-  // to the `Chrome_WidgetWin_1` shell and wrongly admit page clicks. Chrome
-  // bookmark surfaces (bookmark bar, folder menus) are `Chrome_WidgetWin_*`
-  // top-level windows. See the commentary above `FindTabHitResult`.
-  if (!IsChromeWindow(WindowFromPoint(pt))) {
+  // One `WindowFromPoint` serves both jobs. Its deepest window gates web
+  // content: over the page that is the `Chrome_RenderWidgetHostHWND` child
+  // (class not `Chrome_WidgetWin_*`), rejected before any UIA work -- the gate
+  // must read the deepest window, not its `GA_ROOT`, which would climb to the
+  // `Chrome_WidgetWin_1` shell and wrongly admit page clicks. The same handle's
+  // `GA_ROOT` is then the top-level tree to search (main-window bookmark bar,
+  // or a folder menu's own popup). See the commentary above `FindTabHitResult`.
+  const HWND hwnd = WindowFromPoint(pt);
+  if (!IsChromeWindow(hwnd)) {
     return false;
   }
 
@@ -940,7 +936,8 @@ bool IsOnBookmark(POINT pt) {
     return false;
   }
 
-  return FindBookmarkCoveringPoint(*session, pt) != nullptr;
+  return FindBookmarkCoveringPoint(*session, GetAncestor(hwnd, GA_ROOT), pt) !=
+         nullptr;
 }
 
 bool IsOmniboxFocused() {
