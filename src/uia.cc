@@ -919,13 +919,14 @@ bool IsOnTabBar(POINT pt) {
 }
 
 bool IsOnBookmark(POINT pt) {
-  // One `WindowFromPoint` serves both jobs. Its deepest window gates web
-  // content: over the page that is the `Chrome_RenderWidgetHostHWND` child
-  // (class not `Chrome_WidgetWin_*`), rejected before any UIA work -- the gate
-  // must read the deepest window, not its `GA_ROOT`, which would climb to the
-  // `Chrome_WidgetWin_1` shell and wrongly admit page clicks. The same handle's
-  // `GA_ROOT` is then the top-level tree to search (main-window bookmark bar,
-  // or a folder menu's own popup). See the commentary above `FindTabHitResult`.
+  // `WindowFromPoint` returns the deepest window under the cursor and serves as
+  // both the web-content gate and the UIA search anchor. Over the page that
+  // window is the `Chrome_RenderWidgetHostHWND` child (class not
+  // `Chrome_WidgetWin_*`), rejected here before any UIA work. The bookmark bar
+  // and folder menus are themselves top-level `Chrome_WidgetWin_*` windows, so
+  // this handle is already the tree to search -- no `GA_ROOT` climb needed
+  // (unlike `FindTabHitResult`, which keeps it defensively). See the commentary
+  // above `FindTabHitResult`.
   const HWND hwnd = WindowFromPoint(pt);
   if (!IsChromeWindow(hwnd)) {
     return false;
@@ -936,8 +937,7 @@ bool IsOnBookmark(POINT pt) {
     return false;
   }
 
-  return FindBookmarkCoveringPoint(*session, GetAncestor(hwnd, GA_ROOT), pt) !=
-         nullptr;
+  return FindBookmarkCoveringPoint(*session, hwnd, pt) != nullptr;
 }
 
 bool IsOmniboxFocused() {
