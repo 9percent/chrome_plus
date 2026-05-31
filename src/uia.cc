@@ -919,25 +919,29 @@ bool IsOnTabBar(POINT pt) {
 }
 
 bool IsOnBookmark(POINT pt) {
-  // `WindowFromPoint` returns the deepest window under the cursor and serves as
-  // both the web-content gate and the UIA search anchor. Over the page that
-  // window is the `Chrome_RenderWidgetHostHWND` child (class not
-  // `Chrome_WidgetWin_*`), rejected here before any UIA work. The bookmark bar
-  // and folder menus are themselves top-level `Chrome_WidgetWin_*` windows, so
-  // this handle is already the tree to search -- no `GA_ROOT` climb needed
-  // (unlike `FindTabHitResult`, which keeps it defensively). See the commentary
-  // above `FindTabHitResult`.
-  const HWND hwnd = WindowFromPoint(pt);
-  if (!IsChromeWindow(hwnd)) {
-    return false;
-  }
-
   const UiaSession* session = GetUiaSession();
   if (!session) {
     return false;
   }
 
-  return FindBookmarkCoveringPoint(*session, hwnd, pt) != nullptr;
+  // Mirror `FindTabHitResult`: climb to the top-level window with `GA_ROOT`
+  // before gating and anchoring. On secondary windows/monitors
+  // `WindowFromPoint` over a bookmark can return a child window -- the content
+  // area's `Chrome_RenderWidgetHostHWND`, or a child whose class is
+  // `Chrome_WidgetWin_1` as well (see
+  // tools/samples/chrome-148.0.7778.217-main.txt). Gating on the bare handle
+  // then either rejects the click outright (render-widget host) or anchors the
+  // search to the content subtree and misses the bookmark bar on the top-level
+  // tree -- the #238 regression from dropping `GA_ROOT`. Web content is still
+  // screened out downstream: the search anchors `TopContainerView`, so a real
+  // page click lands in no `BookmarkButton` rect.
+  const HWND hwnd = WindowFromPoint(pt);
+  const HWND root = hwnd ? GetAncestor(hwnd, GA_ROOT) : nullptr;
+  if (!root || !IsChromeWindow(root)) {
+    return false;
+  }
+
+  return FindBookmarkCoveringPoint(*session, root, pt) != nullptr;
 }
 
 bool IsOmniboxFocused() {
