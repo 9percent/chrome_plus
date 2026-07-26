@@ -1,0 +1,90 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/build/${presetName}/artifact",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/clang-cl.cmake"
+    },
+    {
+      "name": "x86-debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CHROME_PLUS_ARCH": "x86",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "x86-release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CHROME_PLUS_ARCH": "x86",
+        "CHROME_PLUS_USE_VC_LTL": "ON",
+        "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
+    },
+    {
+      "name": "x64-debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CHROME_PLUS_ARCH": "x64",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "x64-release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CHROME_PLUS_ARCH": "x64",
+        "CHROME_PLUS_USE_VC_LTL": "ON",
+        "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
+    },
+    {
+      "name": "arm64-debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CHROME_PLUS_ARCH": "arm64",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "arm64-release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CHROME_PLUS_ARCH": "arm64",
+        "CHROME_PLUS_USE_VC_LTL": "ON",
+        "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x86-debug",
+      "configurePreset": "x86-debug"
+    },
+    {
+      "name": "x86-release",
+      "configurePreset": "x86-release"
+    },
+    {
+      "name": "x64-debug",
+      "configurePreset": "x64-debug"
+    },
+    {
+      "name": "x64-release",
+      "configurePreset": "x64-release"
+    },
+    {
+      "name": "arm64-debug",
+      "configurePreset": "arm64-debug"
+    },
+    {
+      "name": "arm64-release",
+      "configurePreset": "arm64-release"
+    }
+  ]
+}

@@ -33,10 +33,13 @@ jobs:
         include:
           - name: build_x86
             arch: x86
+            dev_arch: amd64_x86
           - name: build_x64
             arch: x64
+            dev_arch: amd64
           - name: build_arm64
             arch: arm64
+            dev_arch: amd64_arm64
 
     name: ${{ matrix.name }}
     runs-on: windows-2025
@@ -96,28 +99,25 @@ jobs:
           CLANG_BIN=$(dirname "$(where clang-cl | head -n 1)")
           echo "CLANG_BIN=$CLANG_BIN" >> $GITHUB_ENV
 
-      - name: Setup Xmake
-        uses: xmake-io/github-action-setup-xmake@v1
+      - name: Set Up MSVC
+        uses: Eden-CI/msvc-dev-cmd@1bd71f95d6f3d1b2b3395b335cc63bcdc90cf223
         with:
-          xmake-version: '3.0.5'
+          arch: ${{ matrix.dev_arch }}
 
-      - name: Configure Xmake
-        run: xmake f -m ${{ env.BUILD_MODE }} -a ${{ matrix.arch }} --toolchain=clang-cl --bin="${{ env.CLANG_BIN }}" --yes
+      - name: Configure Chrome++
+        run: cmake --preset ${{ matrix.arch }}-${{ env.BUILD_MODE }} -DCMAKE_PROGRAM_PATH="${{ env.CLANG_BIN }}"
 
       - name: Build Chrome++
-        shell: bash
-        run: |
-          if [ "${{ env.BUILD_MODE }}" == "debug" ]; then
-            xmake -vD
-          else
-            xmake
-          fi
+        run: cmake --build --preset ${{ matrix.arch }}-${{ env.BUILD_MODE }}
+
+      - name: Install Chrome++
+        run: cmake --install build/${{ matrix.arch }}-${{ env.BUILD_MODE }} --component Runtime
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v7
         with:
           name: version-${{ matrix.arch }}${{ env.BUILD_MODE == 'debug' && '-debug' || '' }}-${{ env.VERSION }}
-          path: build/${{ env.BUILD_MODE }}/*
+          path: build/${{ matrix.arch }}-${{ env.BUILD_MODE }}/artifact/*
 
   create_pr:
     needs: build

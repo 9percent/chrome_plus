@@ -19,6 +19,28 @@ Chrome++ Next 是一个 `version.dll` 注入项目，会与 `chrome.exe` 一同�
 ## 获取
 - [Releases](https://github.com/Bush2021/chrome_plus/releases)
 
+## 构建
+
+需要 Windows、CMake 3.29 或更高版本、安装了 C++ 工作负载和 Windows SDK 的 Visual Studio Build Tools，以及 Git。使用 `git submodule update --init` 初始化子模块。
+
+默认预设使用 Clang-CL、LLD 和 Ninja。请在已配置目标架构的 Visual Studio 开发者命令行中运行：
+
+```bash
+cmake --preset x64-release
+cmake --build --preset x64-release
+cmake --install build/x64-release --component Runtime
+```
+
+可以将 `x64` 替换为 `x86` 或 `arm64`，将 `release` 替换为 `debug`，以选择其它预设。
+
+LLVM 和 Ninja 不是必需项。使用 Visual Studio 生成器和 MSVC 构建：
+
+```bash
+cmake -S . -B build/vs-x64 -A x64 -DCHROME_PLUS_USE_VC_LTL=ON
+cmake --build build/vs-x64 --config MinSizeRel
+cmake --install build/vs-x64 --config MinSizeRel --prefix build/vs-x64/artifact --component Runtime
+```
+
 ## 安装
 - 请确保将 `version.dll` 放在 `chrome.exe` 同一目录。
 - 推荐使用 [Chrome 离线安装包](https://github.com/Bush2021/chrome_installer)，解压两次后直接使用解包得到的 Chrome 程序文件。

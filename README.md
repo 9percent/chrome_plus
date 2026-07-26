@@ -19,6 +19,28 @@ Chrome++ Next is a `version.dll` injection project for Google Chrome. It is load
 ## Download
 - [Latest releases](https://github.com/Bush2021/chrome_plus/releases)
 
+## Building
+
+Requirements are Windows, CMake 3.29 or newer, Visual Studio Build Tools with the C++ workload and Windows SDK, and Git. Initialize the submodules with `git submodule update --init`.
+
+The default presets use Clang-CL, LLD, and Ninja. Run them from a Visual Studio developer shell configured for the target architecture:
+
+```bash
+cmake --preset x64-release
+cmake --build --preset x64-release
+cmake --install build/x64-release --component Runtime
+```
+
+Replace `x64` with `x86` or `arm64`, and `release` with `debug`, to select another preset.
+
+LLVM and Ninja are optional. To build with the Visual Studio generator and MSVC:
+
+```bash
+cmake -S . -B build/vs-x64 -A x64 -DCHROME_PLUS_USE_VC_LTL=ON
+cmake --build build/vs-x64 --config MinSizeRel
+cmake --install build/vs-x64 --config MinSizeRel --prefix build/vs-x64/artifact --component Runtime
+```
+
 ## Installation
 - Put `version.dll` in the same directory as `chrome.exe`.
 - The recommended installation method is to use the [Chrome offline installer package](https://github.com/Bush2021/chrome_installer), extract it twice, and use the unpacked Chrome program files directly.
