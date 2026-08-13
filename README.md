@@ -1,3 +1,6 @@
+
+</think>
+
 # 功能
 - 双击关闭标签页
 - 保留最后标签页（防止关闭最后一个标签页时关闭浏览器，点X不行）
@@ -10,4 +13,4 @@
 
 [![build status](https://github.com/shuax/chrome_plus/actions/workflows/build.yml/badge.svg)](https://github.com/shuax/chrome_plus/actions/workflows/build.yml)
 # 安装
-dll放入解压版Chrome目录即可
+将 `chrome++.dll` 放入解压版 Chrome 目录即可
