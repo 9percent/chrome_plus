@@ -77,26 +77,22 @@ void SendModifiers(UINT modifiers, bool key_up) {
   }
 }
 
-void RestoreModifiersIfHeld(UINT modifiers) {
-  std::vector<INPUT> inputs;
-
+UINT GetAsyncHeldModifiers(UINT modifiers) {
+  UINT held_modifiers = 0;
   if ((modifiers & MOD_CONTROL) && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
-    AddModifierInput(inputs, VK_CONTROL, false);
+    held_modifiers |= MOD_CONTROL;
   }
   if ((modifiers & MOD_SHIFT) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
-    AddModifierInput(inputs, VK_SHIFT, false);
+    held_modifiers |= MOD_SHIFT;
   }
   if ((modifiers & MOD_ALT) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
-    AddModifierInput(inputs, VK_MENU, false);
+    held_modifiers |= MOD_ALT;
   }
   if ((modifiers & MOD_WIN) && ((GetAsyncKeyState(VK_LWIN) & 0x8000) ||
                                 (GetAsyncKeyState(VK_RWIN) & 0x8000))) {
-    AddModifierInput(inputs, VK_LWIN, false);
+    held_modifiers |= MOD_WIN;
   }
-
-  if (!inputs.empty()) {
-    SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
-  }
+  return held_modifiers;
 }
 
 void SendMappedKey(const KeyMapping& mapping) {
@@ -105,6 +101,10 @@ void SendMappedKey(const KeyMapping& mapping) {
   // - to_press: target has but source doesn't (need to press)
   const UINT to_release = mapping.source_modifiers & ~mapping.target_modifiers;
   const UINT to_press = mapping.target_modifiers & ~mapping.source_modifiers;
+  // Snapshot before SendInput. Injected key-up events update the asynchronous
+  // state later, so querying it after injection races the raw input thread.
+  // https://devblogs.microsoft.com/oldnewthing/20140213-00/?p=1773
+  const UINT to_restore = GetAsyncHeldModifiers(to_release);
 
   SendModifiers(to_release, true);
   SendModifiers(to_press, false);
@@ -132,16 +132,17 @@ void SendMappedKey(const KeyMapping& mapping) {
   SendModifiers(to_press, true);
 
   // Restore modifiers we released (if user still holding them)
-  RestoreModifiersIfHeld(to_release);
+  SendModifiers(to_restore, false);
 }
 
 void ExecuteMappedCommand(const KeyMapping& mapping) {
   // For commands, we need to release source modifiers temporarily
   const UINT to_release = mapping.source_modifiers;
+  const UINT to_restore = GetAsyncHeldModifiers(to_release);
 
   SendModifiers(to_release, true);
   ExecuteCommand(mapping.target_command);
-  RestoreModifiersIfHeld(to_release);
+  SendModifiers(to_restore, false);
 }
 
 bool KeyMappingHandler(WPARAM wParam, LPARAM lParam) {
