@@ -14,9 +14,12 @@ namespace {
 constexpr UINT kDefaultDpi = 96;
 POINT lbutton_down_point = {-1, -1};
 
-constexpr UINT_PTR kHoverTabTimerId = 0x68764254;  // 'hvBT'
+constexpr UINT_PTR kHoverTabTimerId = 0x68764254;        // 'hvBT'
+constexpr UINT_PTR kBookmarkFolderTimerId = 0x626D4654;  // 'bmFT'
 // Non-null while a dwell timer is armed on that top-level window.
 HWND hover_tab_root = nullptr;
+HWND bookmark_folder_timer_root = nullptr;
+POINT bookmark_folder_point = {-1, -1};
 // Screen position of the last WM_MOUSEMOVE handled by HandleHoverTab.
 // Windows posts a synthetic same-position WM_MOUSEMOVE to the window under
 // the cursor whenever the HWND arrangement beneath it may have changed
@@ -370,9 +373,9 @@ bool HandleBookmark(const MOUSEHOOKSTRUCT* pmouse) {
   return false;
 }
 
-// Chrome opens all bookmarks in a folder when the folder receives a middle
-// click. Translate Ctrl+left-click into that native gesture so the behavior
-// works consistently for bookmark-bar folders and nested bookmark menus.
+// Chrome opens all bookmarks in a bookmark-bar folder when the folder receives
+// a middle click. Popup-menu folders take a different path below so the menu
+// can stay open.
 bool HandleBookmarkFolder(const MOUSEHOOKSTRUCT* pmouse) {
   if (!IsKeyPressed(VK_CONTROL) || !IsOnBookmarkFolder(pmouse->pt)) {
     return false;
@@ -380,6 +383,48 @@ bool HandleBookmarkFolder(const MOUSEHOOKSTRUCT* pmouse) {
 
   SetCursorPos(pmouse->pt.x, pmouse->pt.y);
   SendKey(VK_MBUTTON);
+  return true;
+}
+
+void CancelBookmarkFolderTimer() {
+  if (!bookmark_folder_timer_root) {
+    return;
+  }
+  KillTimer(bookmark_folder_timer_root, kBookmarkFolderTimerId);
+  bookmark_folder_timer_root = nullptr;
+}
+
+void CALLBACK BookmarkFolderTimerProc(HWND hwnd,
+                                      UINT,
+                                      UINT_PTR event_id,
+                                      DWORD) {
+  KillTimer(hwnd, event_id);
+  if (bookmark_folder_timer_root != hwnd) {
+    return;
+  }
+  bookmark_folder_timer_root = nullptr;
+  OpenBookmarkMenuFolder(bookmark_folder_point);
+}
+
+bool ScheduleBookmarkMenuFolderOpen(const MOUSEHOOKSTRUCT* pmouse) {
+  if (!IsKeyPressed(VK_CONTROL) || !IsOnBookmarkMenuFolder(pmouse->pt)) {
+    return false;
+  }
+
+  const HWND point_window = WindowFromPoint(pmouse->pt);
+  const HWND root = point_window ? GetAncestor(point_window, GA_ROOT) : nullptr;
+  if (!root) {
+    return false;
+  }
+
+  CancelBookmarkFolderTimer();
+  bookmark_folder_timer_root = root;
+  bookmark_folder_point = pmouse->pt;
+  if (SetTimer(root, kBookmarkFolderTimerId, USER_TIMER_MINIMUM,
+               BookmarkFolderTimerProc) == 0) {
+    bookmark_folder_timer_root = nullptr;
+    return false;
+  }
   return true;
 }
 
@@ -413,6 +458,7 @@ bool TabBookmarkMouseHandler(WPARAM wParam, LPARAM lParam) {
     case WM_LBUTTONDOWN:
     case WM_NCLBUTTONDOWN:
       CancelHoverTabTimer();
+      CancelBookmarkFolderTimer();
       closing_tab_by_dblclk = false;
       last_lbutton_down_on_tab = false;
       if (wParam == WM_LBUTTONDOWN) {
@@ -441,6 +487,11 @@ bool TabBookmarkMouseHandler(WPARAM wParam, LPARAM lParam) {
         return true;
       }
       if (HandleDrag(pmouse)) {
+        return false;
+      } else if (ScheduleBookmarkMenuFolderOpen(pmouse)) {
+        // Let Chrome receive the original Ctrl+left-button release. On current
+        // Windows builds that selects/expands the submenu without executing it;
+        // the timer then opens each URL after the click sequence has completed.
         return false;
       } else if (HandleBookmarkFolder(pmouse)) {
         return true;

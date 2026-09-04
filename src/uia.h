@@ -23,6 +23,8 @@ bool SelectTab(const TabHitResult& hit_result);
 [[nodiscard]] bool IsOnTabBar(POINT pt);
 [[nodiscard]] bool IsOnBookmark(POINT pt);
 [[nodiscard]] bool IsOnBookmarkFolder(POINT pt);
+[[nodiscard]] bool IsOnBookmarkMenuFolder(POINT pt);
+bool OpenBookmarkMenuFolder(POINT pt);
 [[nodiscard]] bool IsOmniboxFocused();
 [[nodiscard]] bool IsOnNewTab(HWND hwnd,
                               const std::vector<std::wstring>& extra_tab_names);

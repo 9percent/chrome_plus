@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
+#include <cstdlib>
 #include <initializer_list>
 #include <optional>
 #include <string_view>
@@ -1077,6 +1079,75 @@ bool WindowHostsWebContent(HWND window) {
   return found;
 }
 
+bool HasExpandedBookmarkBarFolder(const UiaSession& session) {
+  struct SearchContext {
+    const UiaSession* session;
+    bool* found;
+  };
+
+  bool found = false;
+  SearchContext context{&session, &found};
+  EnumThreadWindows(
+      GetCurrentThreadId(),
+      [](HWND window, LPARAM param) -> BOOL {
+        auto* context = reinterpret_cast<SearchContext*>(param);
+        if (!IsWindowVisible(window) || !IsChromeWindow(window) ||
+            !WindowHostsWebContent(window)) {
+          return TRUE;
+        }
+
+        const auto window_element =
+            GetElementFromWindow(*context->session, window);
+        if (!window_element) {
+          return TRUE;
+        }
+        const auto top_container = FindShallowDescendantByClasses(
+            context->session->control_view_walker.Get(), window_element,
+            {L"TopContainerView"}, /*max_visited=*/256);
+        if (!top_container) {
+          return TRUE;
+        }
+        ComPtr<IUIAutomationElementArray> folders;
+        if (FAILED(top_container->FindAll(
+                TreeScope_Subtree,
+                context->session->class_conditions.bookmark_folder_button.Get(),
+                folders.ReleaseAndGetAddressOf())) ||
+            !folders) {
+          return TRUE;
+        }
+
+        int length = 0;
+        if (FAILED(folders->get_Length(&length))) {
+          return TRUE;
+        }
+        for (int i = 0; i < length; ++i) {
+          ComPtr<IUIAutomationElement> folder;
+          ComPtr<IUnknown> pattern;
+          ComPtr<IUIAutomationExpandCollapsePattern> expand_collapse;
+          ExpandCollapseState state = ExpandCollapseState_LeafNode;
+          if (SUCCEEDED(
+                  folders->GetElement(i, folder.ReleaseAndGetAddressOf())) &&
+              folder &&
+              SUCCEEDED(folder->GetCurrentPattern(
+                  UIA_ExpandCollapsePatternId,
+                  pattern.ReleaseAndGetAddressOf())) &&
+              pattern &&
+              SUCCEEDED(pattern->QueryInterface(
+                  IID_PPV_ARGS(expand_collapse.ReleaseAndGetAddressOf()))) &&
+              expand_collapse &&
+              SUCCEEDED(
+                  expand_collapse->get_CurrentExpandCollapseState(&state)) &&
+              state == ExpandCollapseState_Expanded) {
+            *context->found = true;
+            return FALSE;
+          }
+        }
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&context));
+  return found;
+}
+
 // Resolve a bookmark under `pt` without `ElementFromPoint`, mirroring the tab
 // hit-testing approach (see the comment block above `FindTabHitResult`).
 // Every scan stays out of web content: the anchored subtrees have no content
@@ -1133,21 +1204,25 @@ ComPtr<IUIAutomationElement> FindBookmarkTargetCoveringPoint(
   // web content without `TopContainerView` (undocked DevTools again) must be
   // screened out first, or that `FindAll` crosses the renderer tree. Items
   // are `MenuItemView`. URL validation rejects separators; folder validation
-  // requires the ExpandCollapse pattern. For folders, also require at least
-  // one URL bookmark in the popup subtree so Ctrl-clicking an unrelated Chrome
-  // submenu cannot be mistaken for a bookmark-folder action.
+  // requires the ExpandCollapse pattern. For folders, require either a URL in
+  // the popup or an expanded bookmark-bar folder so Ctrl-clicking an unrelated
+  // Chrome submenu cannot be mistaken for a bookmark-folder action.
   if (WindowHostsWebContent(window)) {
     return nullptr;
   }
+  const bool has_bookmark_bar_context = target == BookmarkTarget::kFolder &&
+                                        HasExpandedBookmarkBarFolder(session);
   return FindBookmarkTargetInAnchor(
       window_element, session.class_conditions.menu_item_view, pt, target,
-      /*require_bookmark_context=*/target == BookmarkTarget::kFolder);
+      /*require_bookmark_context=*/target == BookmarkTarget::kFolder &&
+          !has_bookmark_bar_context);
 }
 
-bool IsOnBookmarkTarget(POINT pt, BookmarkTarget target) {
+ComPtr<IUIAutomationElement> FindBookmarkTargetAtPoint(POINT pt,
+                                                       BookmarkTarget target) {
   const UiaSession* session = GetUiaSession();
   if (!session) {
-    return false;
+    return nullptr;
   }
 
   // Climb to the top-level window with `GA_ROOT` before gating and anchoring.
@@ -1156,10 +1231,218 @@ bool IsOnBookmarkTarget(POINT pt, BookmarkTarget target) {
   const HWND hwnd = WindowFromPoint(pt);
   const HWND root = hwnd ? GetAncestor(hwnd, GA_ROOT) : nullptr;
   if (!root || !IsChromeWindow(root)) {
+    return nullptr;
+  }
+  return FindBookmarkTargetCoveringPoint(*session, root, pt, target);
+}
+
+bool IsOnBookmarkTarget(POINT pt, BookmarkTarget target) {
+  return FindBookmarkTargetAtPoint(pt, target) != nullptr;
+}
+
+std::vector<ComPtr<IUIAutomationElement>> FindBookmarkMenuItemsInWindow(
+    const UiaSession& session,
+    HWND window) {
+  std::vector<ComPtr<IUIAutomationElement>> children;
+  const auto window_element = GetElementFromWindow(session, window);
+  if (!window_element) {
+    return children;
+  }
+
+  ComPtr<IUIAutomationElementArray> elements;
+  if (FAILED(window_element->FindAll(
+          TreeScope_Subtree, session.class_conditions.menu_item_view.Get(),
+          elements.ReleaseAndGetAddressOf())) ||
+      !elements) {
+    return children;
+  }
+
+  int length = 0;
+  if (FAILED(elements->get_Length(&length))) {
+    return children;
+  }
+  children.reserve(length);
+  for (int i = 0; i < length; ++i) {
+    ComPtr<IUIAutomationElement> element;
+    if (FAILED(elements->GetElement(i, element.ReleaseAndGetAddressOf())) ||
+        !element) {
+      continue;
+    }
+
+    RECT rect;
+    if (FAILED(element->get_CurrentBoundingRectangle(&rect)) ||
+        IsRectEmpty(&rect)) {
+      continue;
+    }
+    const POINT center = {rect.left + (rect.right - rect.left) / 2,
+                          rect.top + (rect.bottom - rect.top) / 2};
+    const HWND point_window = WindowFromPoint(center);
+    if (point_window && GetAncestor(point_window, GA_ROOT) == window) {
+      children.emplace_back(std::move(element));
+    }
+  }
+  return children;
+}
+
+std::vector<HWND> FindVisibleBookmarkMenuWindows() {
+  std::vector<HWND> windows;
+  EnumThreadWindows(
+      GetCurrentThreadId(),
+      [](HWND window, LPARAM param) -> BOOL {
+        if (IsWindowVisible(window) && IsChromeWindow(window) &&
+            !WindowHostsWebContent(window)) {
+          reinterpret_cast<std::vector<HWND>*>(param)->push_back(window);
+        }
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&windows));
+  return windows;
+}
+
+HWND FindBookmarkSubmenuWindow(const UiaSession& session,
+                               const ComPtr<IUIAutomationElement>& folder,
+                               const std::vector<HWND>& menu_path) {
+  RECT folder_rect;
+  if (FAILED(folder->get_CurrentBoundingRectangle(&folder_rect)) ||
+      IsRectEmpty(&folder_rect)) {
+    return nullptr;
+  }
+  const POINT folder_center = {
+      folder_rect.left + (folder_rect.right - folder_rect.left) / 2,
+      folder_rect.top + (folder_rect.bottom - folder_rect.top) / 2};
+  const HWND point_window = WindowFromPoint(folder_center);
+  const HWND current_menu =
+      point_window ? GetAncestor(point_window, GA_ROOT) : nullptr;
+  if (!current_menu) {
+    return nullptr;
+  }
+
+  const auto windows_before = FindVisibleBookmarkMenuWindows();
+  ComPtr<IUnknown> pattern;
+  if (FAILED(folder->GetCurrentPattern(UIA_ExpandCollapsePatternId,
+                                       pattern.ReleaseAndGetAddressOf())) ||
+      !pattern) {
+    return nullptr;
+  }
+
+  ComPtr<IUIAutomationExpandCollapsePattern> expand_collapse;
+  if (FAILED(pattern->QueryInterface(
+          IID_PPV_ARGS(expand_collapse.ReleaseAndGetAddressOf()))) ||
+      !expand_collapse) {
+    return nullptr;
+  }
+
+  ExpandCollapseState state = ExpandCollapseState_LeafNode;
+  if (FAILED(expand_collapse->get_CurrentExpandCollapseState(&state)) ||
+      state != ExpandCollapseState_Expanded) {
+    if (FAILED(expand_collapse->Expand())) {
+      return nullptr;
+    }
+  }
+
+  HWND best_window = nullptr;
+  bool best_is_new = false;
+  LONG best_score = LONG_MAX;
+  for (const HWND candidate : FindVisibleBookmarkMenuWindows()) {
+    if (candidate == current_menu ||
+        std::ranges::find(menu_path, candidate) != menu_path.end() ||
+        FindBookmarkMenuItemsInWindow(session, candidate).empty()) {
+      continue;
+    }
+
+    RECT candidate_rect;
+    if (!GetWindowRect(candidate, &candidate_rect)) {
+      continue;
+    }
+    const bool is_new =
+        std::ranges::find(windows_before, candidate) == windows_before.end();
+    const LONG left_gap = std::abs(candidate_rect.left - folder_rect.right);
+    const LONG right_gap = std::abs(folder_rect.left - candidate_rect.right);
+    const LONG edge_gap = left_gap < right_gap ? left_gap : right_gap;
+    const LONG score =
+        edge_gap * 4 + std::abs(candidate_rect.top - folder_rect.top);
+    if ((!best_window || (is_new && !best_is_new)) ||
+        (is_new == best_is_new && score < best_score)) {
+      best_window = candidate;
+      best_is_new = is_new;
+      best_score = score;
+    }
+  }
+  return best_window;
+}
+
+bool MiddleClickBookmarkMenuItem(const ComPtr<IUIAutomationElement>& bookmark) {
+  RECT rect;
+  if (FAILED(bookmark->get_CurrentBoundingRectangle(&rect)) ||
+      IsRectEmpty(&rect)) {
     return false;
   }
 
-  return FindBookmarkTargetCoveringPoint(*session, root, pt, target) != nullptr;
+  POINT point = {rect.left + (rect.right - rect.left) / 2,
+                 rect.top + (rect.bottom - rect.top) / 2};
+  const HWND point_window = WindowFromPoint(point);
+  const HWND root = point_window ? GetAncestor(point_window, GA_ROOT) : nullptr;
+  if (!root || !IsChromeWindow(root) || WindowHostsWebContent(root) ||
+      !ScreenToClient(root, &point)) {
+    return false;
+  }
+
+  // Send directly to the menu host so every click keeps its own coordinates
+  // without moving the user's cursor. Chromium leaves bookmark menus open for
+  // background middle-clicks on URL items.
+  const LPARAM position =
+      MAKELPARAM(static_cast<WORD>(point.x), static_cast<WORD>(point.y));
+  SendMessageW(root, WM_MBUTTONDOWN, MK_MBUTTON, position);
+  SendMessageW(root, WM_MBUTTONUP, 0, position);
+  return true;
+}
+
+bool OpenBookmarkMenuFolderContents(const UiaSession& session,
+                                    const ComPtr<IUIAutomationElement>& folder,
+                                    int depth,
+                                    int* opened_count,
+                                    std::vector<HWND> menu_path) {
+  constexpr int kMaxBookmarkFolderDepth = 64;
+  if (depth >= kMaxBookmarkFolderDepth) {
+    return false;
+  }
+
+  RECT folder_rect;
+  if (FAILED(folder->get_CurrentBoundingRectangle(&folder_rect)) ||
+      IsRectEmpty(&folder_rect)) {
+    return false;
+  }
+  const POINT folder_center = {
+      folder_rect.left + (folder_rect.right - folder_rect.left) / 2,
+      folder_rect.top + (folder_rect.bottom - folder_rect.top) / 2};
+  const HWND point_window = WindowFromPoint(folder_center);
+  const HWND current_menu =
+      point_window ? GetAncestor(point_window, GA_ROOT) : nullptr;
+  if (!current_menu) {
+    return false;
+  }
+  if (std::ranges::find(menu_path, current_menu) == menu_path.end()) {
+    menu_path.push_back(current_menu);
+  }
+
+  const HWND submenu_window =
+      FindBookmarkSubmenuWindow(session, folder, menu_path);
+  if (!submenu_window) {
+    return false;
+  }
+  menu_path.push_back(submenu_window);
+  const auto children = FindBookmarkMenuItemsInWindow(session, submenu_window);
+  for (const auto& child : children) {
+    if (IsValidBookmark(child)) {
+      if (MiddleClickBookmarkMenuItem(child)) {
+        ++*opened_count;
+      }
+    } else if (IsBookmarkFolder(child)) {
+      OpenBookmarkMenuFolderContents(session, child, depth + 1, opened_count,
+                                     menu_path);
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -1309,6 +1592,27 @@ bool IsOnBookmark(POINT pt) {
 
 bool IsOnBookmarkFolder(POINT pt) {
   return IsOnBookmarkTarget(pt, BookmarkTarget::kFolder);
+}
+
+bool IsOnBookmarkMenuFolder(POINT pt) {
+  const auto folder = FindBookmarkTargetAtPoint(pt, BookmarkTarget::kFolder);
+  return folder && HasClassName(folder, L"MenuItemView");
+}
+
+bool OpenBookmarkMenuFolder(POINT pt) {
+  const UiaSession* session = GetUiaSession();
+  if (!session) {
+    return false;
+  }
+
+  const auto folder = FindBookmarkTargetAtPoint(pt, BookmarkTarget::kFolder);
+  if (!folder || !HasClassName(folder, L"MenuItemView")) {
+    return false;
+  }
+
+  int opened_count = 0;
+  OpenBookmarkMenuFolderContents(*session, folder, 0, &opened_count, {});
+  return true;
 }
 
 bool IsOmniboxFocused() {
