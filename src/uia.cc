@@ -44,6 +44,7 @@ struct CachedClassConditions {
   ComPtr<IUIAutomationCondition> tab_view;
   ComPtr<IUIAutomationCondition> tab_close_button;
   ComPtr<IUIAutomationCondition> bookmark_button;
+  ComPtr<IUIAutomationCondition> bookmark_folder_button;
   ComPtr<IUIAutomationCondition> menu_item_view;
   ComPtr<IUIAutomationCondition> tab_strip_control_button;
 };
@@ -149,6 +150,8 @@ bool InitializeClassConditions(UiaSession* session) {
                               &conditions.tab_close_button) &&
          CreateClassCondition(session->automation, L"BookmarkButton",
                               &conditions.bookmark_button) &&
+         CreateClassCondition(session->automation, L"BookmarkFolderButton",
+                              &conditions.bookmark_folder_button) &&
          CreateClassCondition(session->automation, L"MenuItemView",
                               &conditions.menu_item_view) &&
          CreateClassCondition(session->automation, L"TabStripControlButton",
@@ -348,6 +351,23 @@ bool IsValidBookmark(const ComPtr<IUIAutomationElement>& element) {
   const std::wstring_view view(*full_description);
   return !view.starts_with(L"javascript:") &&
          (view.contains(L':') || view.contains(L'.'));
+}
+
+bool IsBookmarkFolder(const ComPtr<IUIAutomationElement>& element) {
+  if (HasClassName(element, L"BookmarkFolderButton")) {
+    return true;
+  }
+  if (!HasClassName(element, L"MenuItemView")) {
+    return false;
+  }
+
+  // Bookmark folders inside a popup menu are submenus. Chromium exposes the
+  // submenu capability through UIA's ExpandCollapse pattern, while leaf
+  // bookmarks and separators do not expose it.
+  ComPtr<IUnknown> pattern;
+  return SUCCEEDED(element->GetCurrentPattern(
+             UIA_ExpandCollapsePatternId, pattern.ReleaseAndGetAddressOf())) &&
+         pattern;
 }
 
 // Walker-based traversal has a blind spot on Chrome 152+'s unified tab strip:
@@ -981,10 +1001,17 @@ std::optional<std::wstring> GetNewTabButtonName(
   return cached_name;
 }
 
-ComPtr<IUIAutomationElement> FindBookmarkInAnchor(
+enum class BookmarkTarget {
+  kUrl,
+  kFolder,
+};
+
+ComPtr<IUIAutomationElement> FindBookmarkTargetInAnchor(
     const ComPtr<IUIAutomationElement>& anchor,
     const ComPtr<IUIAutomationCondition>& item_condition,
-    POINT pt) {
+    POINT pt,
+    BookmarkTarget target,
+    bool require_bookmark_context = false) {
   ComPtr<IUIAutomationElementArray> elements;
   if (FAILED(anchor->FindAll(TreeScope_Subtree, item_condition.Get(),
                              elements.ReleaseAndGetAddressOf())) ||
@@ -995,21 +1022,33 @@ ComPtr<IUIAutomationElement> FindBookmarkInAnchor(
   if (FAILED(elements->get_Length(&length))) {
     return nullptr;
   }
+  ComPtr<IUIAutomationElement> hit;
+  bool has_url_bookmark = !require_bookmark_context;
   for (int i = 0; i < length; ++i) {
     ComPtr<IUIAutomationElement> element;
     if (FAILED(elements->GetElement(i, element.ReleaseAndGetAddressOf())) ||
         !element) {
       continue;
     }
+    if (require_bookmark_context && IsValidBookmark(element)) {
+      has_url_bookmark = true;
+    }
+
     RECT rect;
     if (FAILED(element->get_CurrentBoundingRectangle(&rect))) {
       continue;
     }
-    if (PtInRect(&rect, pt) && IsValidBookmark(element)) {
-      return element;
+    const bool matches = target == BookmarkTarget::kUrl
+                             ? IsValidBookmark(element)
+                             : IsBookmarkFolder(element);
+    if (PtInRect(&rect, pt) && matches) {
+      hit = std::move(element);
+      if (has_url_bookmark) {
+        return hit;
+      }
     }
   }
-  return nullptr;
+  return has_url_bookmark ? hit : nullptr;
 }
 
 // True when `window` hosts web content. WebContents on Windows always carries
@@ -1042,18 +1081,21 @@ bool WindowHostsWebContent(HWND window) {
 // hit-testing approach (see the comment block above `FindTabHitResult`).
 // Every scan stays out of web content: the anchored subtrees have no content
 // branch, and the discovery walk is the chrome-only BFS.
-ComPtr<IUIAutomationElement>
-FindBookmarkCoveringPoint(const UiaSession& session, HWND window, POINT pt) {
+ComPtr<IUIAutomationElement> FindBookmarkTargetCoveringPoint(
+    const UiaSession& session,
+    HWND window,
+    POINT pt,
+    BookmarkTarget target) {
   const auto window_element = GetElementFromWindow(session, window);
   if (!window_element) {
     return nullptr;
   }
 
   // Main browser window: anchor the scan to `TopContainerView`, the content-
-  // free sibling of the page branch. `BookmarkButton` only ever lives in the
-  // bookmark bar beneath it, and the omnibox results popup is mirrored under a
-  // different `BrowserRootView` branch (outside `TopContainerView`), so a
-  // covered `BookmarkButton` is unambiguous -- no narrowing to
+  // free sibling of the page branch. Bookmark buttons only ever live in the
+  // bookmark bar beneath it, and the omnibox results popup is mirrored under
+  // a different `BrowserRootView` branch (outside `TopContainerView`), so a
+  // covered bookmark button is unambiguous -- no narrowing to
   // `BookmarkBarView` and no former #238 z-order workaround needed. The BFS
   // (not a root-scoped `FindFirst`) matters on windows that lack
   // `TopContainerView`, e.g. undocked DevTools: pre-order `FindFirst` walks
@@ -1062,8 +1104,11 @@ FindBookmarkCoveringPoint(const UiaSession& session, HWND window, POINT pt) {
   if (const auto top_container = FindShallowDescendantByClasses(
           session.control_view_walker.Get(), window_element,
           {L"TopContainerView"}, /*max_visited=*/256)) {
-    return FindBookmarkInAnchor(top_container,
-                                session.class_conditions.bookmark_button, pt);
+    const auto& condition =
+        target == BookmarkTarget::kUrl
+            ? session.class_conditions.bookmark_button
+            : session.class_conditions.bookmark_folder_button;
+    return FindBookmarkTargetInAnchor(top_container, condition, pt, target);
   }
 
   // `FindBarHost` is a separate widget positioned from
@@ -1077,7 +1122,8 @@ FindBookmarkCoveringPoint(const UiaSession& session, HWND window, POINT pt) {
     ComPtr<IUIAutomationElement> pointed;
     if (SUCCEEDED(session.automation->ElementFromPoint(
             pt, pointed.ReleaseAndGetAddressOf())) &&
-        IsValidBookmark(pointed)) {
+        (target == BookmarkTarget::kUrl ? IsValidBookmark(pointed)
+                                        : IsBookmarkFolder(pointed))) {
       return pointed;
     }
   }
@@ -1086,13 +1132,34 @@ FindBookmarkCoveringPoint(const UiaSession& session, HWND window, POINT pt) {
   // window root is a safe anchor for the subtree `FindAll`. Windows that host
   // web content without `TopContainerView` (undocked DevTools again) must be
   // screened out first, or that `FindAll` crosses the renderer tree. Items
-  // are `MenuItemView` (separators share the class but `IsValidBookmark`
-  // rejects them).
+  // are `MenuItemView`. URL validation rejects separators; folder validation
+  // requires the ExpandCollapse pattern. For folders, also require at least
+  // one URL bookmark in the popup subtree so Ctrl-clicking an unrelated Chrome
+  // submenu cannot be mistaken for a bookmark-folder action.
   if (WindowHostsWebContent(window)) {
     return nullptr;
   }
-  return FindBookmarkInAnchor(window_element,
-                              session.class_conditions.menu_item_view, pt);
+  return FindBookmarkTargetInAnchor(
+      window_element, session.class_conditions.menu_item_view, pt, target,
+      /*require_bookmark_context=*/target == BookmarkTarget::kFolder);
+}
+
+bool IsOnBookmarkTarget(POINT pt, BookmarkTarget target) {
+  const UiaSession* session = GetUiaSession();
+  if (!session) {
+    return false;
+  }
+
+  // Climb to the top-level window with `GA_ROOT` before gating and anchoring.
+  // `WindowFromPoint` can return a child render or Views HWND instead of the
+  // browser frame. A bookmark folder menu is already its own root.
+  const HWND hwnd = WindowFromPoint(pt);
+  const HWND root = hwnd ? GetAncestor(hwnd, GA_ROOT) : nullptr;
+  if (!root || !IsChromeWindow(root)) {
+    return false;
+  }
+
+  return FindBookmarkTargetCoveringPoint(*session, root, pt, target) != nullptr;
 }
 
 }  // namespace
@@ -1237,27 +1304,11 @@ bool IsOnTabBar(POINT pt) {
 }
 
 bool IsOnBookmark(POINT pt) {
-  const UiaSession* session = GetUiaSession();
-  if (!session) {
-    return false;
-  }
+  return IsOnBookmarkTarget(pt, BookmarkTarget::kUrl);
+}
 
-  // Climb to the top-level window with `GA_ROOT` before gating and anchoring is
-  // needed. On secondary windows/monitors `WindowFromPoint` over a bookmark can
-  // return a child window -- the content area's `Chrome_RenderWidgetHostHWND`,
-  // or a child whose class is `Chrome_WidgetWin_1` as well. Gating on the bare
-  // handle then either rejects the click outright (render-widget host) or
-  // anchors the search to the content subtree and misses the bookmark bar on
-  // the top-level tree -- the #238 regression from dropping `GA_ROOT`. Web
-  // content is still screened out downstream since the search anchors
-  // `TopContainerView`, so a real page click lands in no `BookmarkButton` rect.
-  const HWND hwnd = WindowFromPoint(pt);
-  const HWND root = hwnd ? GetAncestor(hwnd, GA_ROOT) : nullptr;
-  if (!root || !IsChromeWindow(root)) {
-    return false;
-  }
-
-  return FindBookmarkCoveringPoint(*session, root, pt) != nullptr;
+bool IsOnBookmarkFolder(POINT pt) {
+  return IsOnBookmarkTarget(pt, BookmarkTarget::kFolder);
 }
 
 bool IsOmniboxFocused() {

@@ -370,6 +370,19 @@ bool HandleBookmark(const MOUSEHOOKSTRUCT* pmouse) {
   return false;
 }
 
+// Chrome opens all bookmarks in a folder when the folder receives a middle
+// click. Translate Ctrl+left-click into that native gesture so the behavior
+// works consistently for bookmark-bar folders and nested bookmark menus.
+bool HandleBookmarkFolder(const MOUSEHOOKSTRUCT* pmouse) {
+  if (!IsKeyPressed(VK_CONTROL) || !IsOnBookmarkFolder(pmouse->pt)) {
+    return false;
+  }
+
+  SetCursorPos(pmouse->pt.x, pmouse->pt.y);
+  SendKey(VK_MBUTTON);
+  return true;
+}
+
 // Mouse handler for tab and bookmark operations
 bool TabBookmarkMouseHandler(WPARAM wParam, LPARAM lParam) {
   PMOUSEHOOKSTRUCT pmouse = reinterpret_cast<PMOUSEHOOKSTRUCT>(lParam);
@@ -429,6 +442,8 @@ bool TabBookmarkMouseHandler(WPARAM wParam, LPARAM lParam) {
       }
       if (HandleDrag(pmouse)) {
         return false;
+      } else if (HandleBookmarkFolder(pmouse)) {
+        return true;
       } else if (HandleBookmark(pmouse)) {
         return true;
       } else if (HandleCloseButton(pmouse)) {
