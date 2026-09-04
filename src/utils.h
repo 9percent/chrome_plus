@@ -4,11 +4,10 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include "fastsearch.h"
 
 // Global variable declaration
 extern HMODULE hInstance;
@@ -52,9 +51,6 @@ std::vector<std::string> StringSplit(std::string_view str,
                                      const char delim,
                                      std::string_view enclosure = "");
 
-// Parse a hotkey string like "Ctrl+PageUp" to modifiers/vk (MAKELPARAM).
-UINT ParseHotkeys(std::wstring_view keys);
-
 // HTML compression functions
 void compression_html(std::string& html);
 
@@ -72,7 +68,8 @@ std::wstring JoinArgsString(const std::vector<std::wstring>& lines,
                             std::wstring_view delimiter);
 
 // Memory and module search functions
-uint8_t* memmem(uint8_t* src, int n, const uint8_t* sub, int m);
+std::span<uint8_t> SearchMemory(std::span<uint8_t> src,
+                                std::span<const uint8_t> sub);
 
 // Parse the INI file
 std::wstring GetIniString(std::wstring_view section,
@@ -107,7 +104,7 @@ void DebugLog(std::wformat_string<Args...> fmt, Args&&... args) {
 
   if (std::wofstream log_file(log_path, std::ios::app); log_file.is_open()) {
     log_file.imbue(std::locale(""));
-    log_file << log_content << std::endl;
+    log_file << log_content << L'\n';
   }
 }
 #else
@@ -118,7 +115,7 @@ inline void DebugLog(std::wstring_view, auto&&...) {}
 HWND GetTopWnd(HWND hwnd);
 void ExecuteCommand(int id, HWND hwnd = 0);
 void LaunchCommands(const std::wstring& get_commands);
-bool IsFullScreen(HWND hwnd);
+[[nodiscard]] bool IsChromeWindow(HWND hwnd);
 
 // Keyboard and mouse input functions
 // Template function for sending combined key operations - kept in header
@@ -195,5 +192,12 @@ void SendKey(T&&... keys) {
   }
   SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
 }
+
+// Parse hotkey string like "Ctrl+Shift+A" into MAKELPARAM(modifiers, vk)
+// Supports modifiers: shift, ctrl/control, alt, win
+// Supports keys: F1-F24, A-Z, 0-9, arrow keys, special keys (esc, tab, etc.)
+// Returns: LOWORD = modifiers, HIWORD = virtual key code
+// no_repeat: if true, adds MOD_NOREPEAT flag (default for `RegisterHotKey`)
+UINT ParseHotkeys(std::wstring_view keys, bool no_repeat = true);
 
 #endif  // CHROME_PLUS_SRC_UTILS_H_

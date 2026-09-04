@@ -63,20 +63,6 @@ ATOM bosskey_window_class = 0;
 HotkeyAction bosskey_action = nullptr;
 constexpr UINT kBossKeyHotkeyId = 1;
 
-bool IsChromeWindow(HWND hwnd) {
-  if (!hwnd) {
-    return false;
-  }
-  wchar_t buff[256];
-  GetClassNameW(hwnd, buff, 255);
-  if (wcscmp(buff, L"Chrome_WidgetWin_1") != 0) {
-    return false;
-  }
-  DWORD pid = 0;
-  GetWindowThreadProcessId(hwnd, &pid);
-  return pid == GetCurrentProcessId();
-}
-
 bool EnsureBossKeyWindow() {
   if (bosskey_hwnd) {
     return true;
@@ -199,19 +185,12 @@ void ForceForegroundWindow(HWND hwnd, HWND preferred_focus) {
 }
 
 BOOL CALLBACK SearchChromeWindow(HWND hwnd, LPARAM lparam) {
-  if (IsWindowVisible(hwnd)) {
-    wchar_t buff[256];
-    GetClassNameW(hwnd, buff, 255);
-    if (wcscmp(buff, L"Chrome_WidgetWin_1") ==
-        0)  // || wcscmp(buff, L"Chrome_WidgetWin_2")==0 || wcscmp(buff,
-            // L"SysShadow")==0 )
-    {
-      DWORD pid;
-      GetWindowThreadProcessId(hwnd, &pid);
-      if (pid == GetCurrentProcessId()) {
-        ShowWindow(hwnd, SW_HIDE);
-        hwnd_list.emplace_back(hwnd);
-      }
+  if (IsWindowVisible(hwnd) && IsChromeWindow(hwnd)) {
+    DWORD pid;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == GetCurrentProcessId()) {
+      ShowWindow(hwnd, SW_HIDE);
+      hwnd_list.emplace_back(hwnd);
     }
   }
   return true;
@@ -249,6 +228,9 @@ std::vector<DWORD> GetAppPids() {
 }
 
 std::optional<std::wstring> GetSessionKey(IAudioSessionControl2* session2) {
+  if (!session2) {
+    return std::nullopt;
+  }
   LPWSTR session_key = nullptr;
   if (SUCCEEDED(session2->GetSessionInstanceIdentifier(&session_key)) &&
       session_key) {
@@ -820,30 +802,6 @@ void Hotkey(std::wstring_view keys, HotkeyAction action) {
 }
 
 }  // anonymous namespace
-
-UINT ParseTranslateKey() {
-  const auto& translate_key = config.GetTranslateKey();
-  if (translate_key.empty()) {
-    return 0;
-  }
-  return ParseHotkeys(translate_key.c_str());
-}
-
-UINT ParseSwitchToPrevKey() {
-  const auto& switch_to_prev = config.GetSwitchToPrevKey();
-  if (switch_to_prev.empty()) {
-    return 0;
-  }
-  return ParseHotkeys(switch_to_prev.c_str());
-}
-
-UINT ParseSwitchToNextKey() {
-  const auto& switch_to_next = config.GetSwitchToNextKey();
-  if (switch_to_next.empty()) {
-    return 0;
-  }
-  return ParseHotkeys(switch_to_next.c_str());
-}
 
 void GetHotkey() {
   const auto& boss_key = config.GetBossKey();

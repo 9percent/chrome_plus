@@ -12,27 +12,6 @@
 #include "utils.h"
 
 namespace {
-// Note: As of Chromium M140, it seems that the `ScriptStreamingForNonHTTP`
-// feature flag no longer works. We switch to using the
-// `--disable-features=WebUIInProcessResourceLoading` flag instead.
-
-// The `--disable-features=WebUIInProcessResourceLoading` flag is added to
-// address https://github.com/Bush2021/chrome_plus/issues/172. Google Chrome
-// receives field trial configurations from the variations server, which can be
-// inspected via `chrome://version/?show-variations-cmd`. This mechanism causes
-// certain features (`base::Feature`) to be enabled or disabled dynamically,
-// leading to behavioral differences that may not be reproducible across all
-// environments. Adding `--enable-benchmarking` can force all features to a
-// fixed state, disabling randomization and making it easier to diagnose whether
-// an observed issue is caused by a non-default `base::Feature` configuration.
-//
-// In this case, it was found that disabling `WebUIInProcessResourceLoading`
-// restores normal behavior. This affects how Chrome WebUI pages (such as
-// `about:` or `chrome://`) load resources. See
-// https://issues.chromium.org/issues/362511750 and
-// https://chromium-review.googlesource.com/c/chromium/src/+/5868139 for
-// details. If this workaround becomes ineffective in the future, more in-depth
-// modifications may be required.
 
 bool IsWhitespace(wchar_t ch) {
   switch (ch) {
@@ -195,9 +174,12 @@ ProcessedArgs ProcessAndMergeArgs(const std::vector<std::wstring>& args) {
   if (!combined_features.empty()) {
     combined_features.append(L",");
   }
-  // See the comment at the start of the namespace for details on these.
-  combined_features.append(
-      L"WinSboxNoFakeGdiInit,WebUIInProcessResourceLoading");
+  // `WinSboxNoFakeGdiInit` is force-disabled so the injected `version.dll` can
+  // load inside sandboxed Chrome sub-processes: with the feature enabled, a
+  // win32k-lockdown process fails to load gdi32/user32 rather than getting a
+  // fake init, which breaks the injected DLL's dependencies (Chromium
+  // `sandbox/policy/features.cc`).
+  combined_features.append(L"WinSboxNoFakeGdiInit");
   result.final_args.emplace_back(disable_features_prefix + combined_features);
 
   return result;
@@ -208,13 +190,13 @@ void InjectConfigPaths(std::vector<std::wstring>& args,
                        bool has_user_data_dir,
                        bool has_disk_cache_dir) {
   if (!has_user_data_dir) {
-    if (auto userdata = config.GetUserDataDir(); !userdata.empty()) {
-      args.emplace_back(L"--user-data-dir=" + userdata);
+    if (auto userdata = config.GetUserDataDir(); userdata.has_value()) {
+      args.emplace_back(L"--user-data-dir=" + *userdata);
     }
   }
   if (!has_disk_cache_dir) {
-    if (auto diskcache = config.GetDiskCacheDir(); !diskcache.empty()) {
-      args.emplace_back(L"--disk-cache-dir=" + diskcache);
+    if (auto diskcache = config.GetDiskCacheDir(); diskcache.has_value()) {
+      args.emplace_back(L"--disk-cache-dir=" + *diskcache);
     }
   }
 }
@@ -273,16 +255,36 @@ void Portable(LPWSTR param) {
   ::GetModuleFileName(nullptr, path, MAX_PATH);
 
   std::wstring args = GetCommand(param);
+  std::wstring command_line = QuoteSpaceIfNeeded(path);
+  if (!args.empty()) {
+    command_line.push_back(L' ');
+    command_line.append(args);
+  }
+  std::vector<wchar_t> command_line_buffer(command_line.begin(),
+                                           command_line.end());
+  command_line_buffer.emplace_back(L'\0');
 
-  SHELLEXECUTEINFO sei = {0};
-  sei.cbSize = sizeof(SHELLEXECUTEINFO);
-  sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
-  sei.lpVerb = L"open";
-  sei.lpFile = path;
-  sei.nShow = SW_SHOWNORMAL;
-
-  sei.lpParameters = args.c_str();
-  if (ShellExecuteEx(&sei)) {
+  STARTUPINFO startup_info{.cb = sizeof(STARTUPINFO),
+                           .dwFlags = STARTF_USESHOWWINDOW,
+                           .wShowWindow = SW_SHOWNORMAL};
+  PROCESS_INFORMATION process_info{};
+  const std::wstring& current_directory = GetAppDir();
+  // Keep this pre-entry relaunch on `CreateProcessW` instead of
+  // `ShellExecuteExW`. This code runs before Chromium's entry point, and the
+  // crash in #252 was captured while `ShellExecuteExW` had loaded
+  // shell32/Windows.Storage into that partially initialized injected chrome.exe
+  // process. Chromium's normal Windows launch path also uses `CreateProcessW`
+  // directly, after setting the browser process CWD to the executable
+  // directory. See:
+  // https://chromium.googlesource.com/chromium/src/+/HEAD/base/process/launch_win.cc#388
+  // https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/app/chrome_exe_main_win.cc#61
+  // https://github.com/Bush2021/chrome_plus/issues/252
+  if (::CreateProcessW(path, command_line_buffer.data(), nullptr, nullptr,
+                       FALSE, 0, nullptr, current_directory.c_str(),
+                       &startup_info, &process_info)) {
+    ::CloseHandle(process_info.hThread);
+    ::CloseHandle(process_info.hProcess);
     ExitProcess(0);
   }
+  DebugLog(L"Create portable process failed: {}", GetLastError());
 }

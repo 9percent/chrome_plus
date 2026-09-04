@@ -1,33 +1,33 @@
 #ifndef CHROME_PLUS_SRC_CONFIG_H_
 #define CHROME_PLUS_SRC_CONFIG_H_
 
-#include <windows.h>
-
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 class Config {
  public:
-  struct KeyMapping {
-    UINT from_modifiers;
-    UINT from_vk;
-    UINT to_modifiers;
-    UINT to_vk;
-  };
-
   static Config& Instance();
 
   // general
   const std::wstring& GetCommandLine() const { return command_line_; }
   const std::wstring& GetLaunchOnStartup() const { return launch_on_startup_; }
   const std::wstring& GetLaunchOnExit() const { return launch_on_exit_; }
-  const std::wstring& GetUserDataDir() const { return user_data_dir_; }
-  const std::wstring& GetDiskCacheDir() const { return disk_cache_dir_; }
+  const std::optional<std::wstring>& GetUserDataDir() const {
+    return user_data_dir_;
+  }
+  const std::optional<std::wstring>& GetDiskCacheDir() const {
+    return disk_cache_dir_;
+  }
   const std::wstring& GetBossKey() const { return boss_key_; }
   const std::wstring& GetTranslateKey() const { return translate_key_; }
-  const std::vector<KeyMapping>& GetKeyMappings() const { return key_mappings_; }
   bool IsShowPassword() const { return show_password_; }
   bool IsWin32K() const { return win32k_; }
+  bool IsIgnorePolicies() const { return ignore_policies_; }
+  bool IsSuppressFalseUpgradeNotification() const {
+    return suppress_false_upgrade_notification_;
+  }
 
   // tabs
   bool IsKeepLastTab() const { return keep_last_tab_; }
@@ -37,12 +37,21 @@ class Config {
   bool IsWheelTabWhenPressRightButton() const {
     return wheel_tab_when_press_rbutton_;
   }
+  bool IsHoverTab() const { return hover_tab_; }
+  int GetHoverTabDelay() const { return hover_tab_delay_; }
   int GetOpenUrlNewTabMode() const { return open_url_new_tab_; }
   int GetBookmarkNewTabMode() const { return bookmark_new_tab_; }
   bool IsNewTabDisable() const { return new_tab_disable_; }
   const std::wstring& GetDisableTabName() const { return disable_tab_name_; }
+  const std::vector<std::wstring>& GetDisableTabNames() const {
+    return disable_tab_names_;
+  }
   const std::wstring& GetSwitchToPrevKey() const { return switch_to_prev_; }
   const std::wstring& GetSwitchToNextKey() const { return switch_to_next_; }
+
+  // keymapping
+  using KeyMappingPair = std::pair<std::wstring, std::wstring>;
+  const auto& GetKeyMappings() const { return key_mappings_; }
 
  private:
   Config();
@@ -51,24 +60,26 @@ class Config {
   Config& operator=(const Config&) = delete;
 
   void LoadConfig();
+  void LoadKeyMappings();
 
-  std::wstring LoadDirPath(const std::wstring& dir_type);
+  std::optional<std::wstring> LoadDirPath(const std::wstring& dir_type);
+  int LoadHoverTabDelay();
   int LoadOpenUrlNewTabMode();
   int LoadBookmarkNewTabMode();
-  std::vector<KeyMapping> LoadKeyMappings();
 
  private:
   // general
   std::wstring command_line_;
   std::wstring launch_on_startup_;
   std::wstring launch_on_exit_;
-  std::wstring user_data_dir_;
-  std::wstring disk_cache_dir_;
+  std::optional<std::wstring> user_data_dir_;
+  std::optional<std::wstring> disk_cache_dir_;
   std::wstring boss_key_;
   std::wstring translate_key_;
-  std::vector<KeyMapping> key_mappings_;
   bool show_password_;
   bool win32k_;
+  bool ignore_policies_;
+  bool suppress_false_upgrade_notification_;
 
   // tabs
   bool keep_last_tab_;
@@ -76,12 +87,18 @@ class Config {
   bool right_click_close_;
   bool wheel_tab_;
   bool wheel_tab_when_press_rbutton_;
+  bool hover_tab_;
+  int hover_tab_delay_;
   int open_url_new_tab_;
   int bookmark_new_tab_;
   bool new_tab_disable_;
   std::wstring disable_tab_name_;
+  std::vector<std::wstring> disable_tab_names_;
   std::wstring switch_to_prev_;
   std::wstring switch_to_next_;
+
+  // keymapping
+  std::vector<KeyMappingPair> key_mappings_;
 };
 
 extern const Config& config;

@@ -1,4 +1,15 @@
-.xmake/
 build/
+out/
 .vscode/
+.zed/
 .idea/
+.agents/
+.claude/
+AGENTS.md
+CLAUDE.md
+TODO.md
+cppguide.html
+compile_commands.json
+CMakeUserPresets.json
+.cache/
+.xmake/

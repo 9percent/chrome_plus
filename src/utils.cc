@@ -6,22 +6,19 @@
 #include <shlwapi.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
-#include <cwctype>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cwctype>
+#include <functional>
+#include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
-
-#ifndef MOD_NOREPEAT
-constexpr UINT kModNoRepeat = 0x4000;
-#else
-constexpr UINT kModNoRepeat = MOD_NOREPEAT;
-#endif
 
 // Global variable definitions
 HMODULE hInstance = nullptr;
@@ -50,7 +47,7 @@ std::vector<std::wstring> StringSplit(std::wstring_view str,
   std::vector<std::wstring> result;
   auto parts = std::views::split(str, delim);
   for (const auto& part : parts) {
-    std::wstring_view part_sv(part.begin(), part.end());
+    std::wstring_view part_sv(part);
     if (!enclosure.empty()) {
       if (!part_sv.empty() && part_sv.front() == enclosure.front()) {
         part_sv.remove_prefix(1);
@@ -70,7 +67,7 @@ std::vector<std::string> StringSplit(std::string_view str,
   std::vector<std::string> result;
   auto parts = std::views::split(str, delim);
   for (const auto& part : parts) {
-    std::string_view part_sv(part.begin(), part.end());
+    std::string_view part_sv(part);
     if (!enclosure.empty()) {
       if (!part_sv.empty() && part_sv.front() == enclosure.front()) {
         part_sv.remove_prefix(1);
@@ -82,58 +79,6 @@ std::vector<std::string> StringSplit(std::string_view str,
     result.emplace_back(part_sv);
   }
   return result;
-}
-
-UINT ParseHotkeys(std::wstring_view keys) {
-  UINT mo = 0;
-  UINT vk = 0;
-  std::wstring temp(keys);
-  std::vector<std::wstring> key_parts = StringSplit(temp, L'+');
-
-  static const std::unordered_map<std::wstring, UINT> key_map = {
-      {L"shift", MOD_SHIFT},  {L"ctrl", MOD_CONTROL}, {L"alt", MOD_ALT},
-      {L"win", MOD_WIN},      {L"left", VK_LEFT},     {L"right", VK_RIGHT},
-      {L"up", VK_UP},         {L"down", VK_DOWN},     {L"←", VK_LEFT},
-      {L"→", VK_RIGHT},       {L"↑", VK_UP},          {L"↓", VK_DOWN},
-      {L"esc", VK_ESCAPE},    {L"tab", VK_TAB},       {L"backspace", VK_BACK},
-      {L"enter", VK_RETURN},  {L"space", VK_SPACE},   {L"prtsc", VK_SNAPSHOT},
-      {L"scroll", VK_SCROLL}, {L"pause", VK_PAUSE},   {L"insert", VK_INSERT},
-      {L"delete", VK_DELETE}, {L"end", VK_END},       {L"home", VK_HOME},
-      {L"pageup", VK_PRIOR},  {L"pagedown", VK_NEXT},
-  };
-
-  for (auto& key : key_parts) {
-    std::ranges::transform(key, key.begin(), ::towlower);
-
-    if (key_map.contains(key)) {
-      if (key == L"shift" || key == L"ctrl" || key == L"alt" || key == L"win") {
-        mo |= key_map.at(key);
-      } else {
-        vk = key_map.at(key);
-      }
-    } else {
-      TCHAR wch = key[0];
-      if (key.length() == 1)  // Parse single characters A-Z, 0-9, etc.
-      {
-        if (isalnum(wch)) {
-          vk = toupper(wch);
-        } else {
-          vk = LOWORD(VkKeyScan(wch));
-        }
-      } else if (wch == 'F' || wch == 'f')  // Parse the F1-F24 function keys.
-      {
-        if (isdigit(key[1])) {
-          int fx = _wtoi(&key[1]);
-          if (fx >= 1 && fx <= 24) {
-            vk = VK_F1 + fx - 1;
-          }
-        }
-      }
-    }
-  }
-
-  mo |= kModNoRepeat;
-  return MAKELPARAM(mo, vk);
 }
 
 // Compression html.
@@ -192,8 +137,9 @@ bool ReplaceStringInPlace(std::wstring& subject,
 }
 
 std::wstring QuoteSpaceIfNeeded(const std::wstring& str) {
-  if (str.find(L' ') == std::wstring::npos)
+  if (!str.contains(L' ')) {
     return str;
+  }
 
   std::wstring escaped(L"\"");
   for (auto c : str) {
@@ -208,22 +154,25 @@ std::wstring QuoteSpaceIfNeeded(const std::wstring& str) {
 
 std::wstring JoinArgsString(const std::vector<std::wstring>& lines,
                             std::wstring_view delimiter) {
-  std::wstring text;
-  bool first = true;
-  for (auto& line : lines) {
-    if (!first) {
-      text += delimiter;
-    } else {
-      first = false;
-    }
-    text += QuoteSpaceIfNeeded(line);
+  if (lines.empty()) {
+    return L"";
   }
-  return text;
+  return lines | std::views::transform(QuoteSpaceIfNeeded) |
+         std::views::join_with(delimiter) | std::ranges::to<std::wstring>();
 }
 
 // Search memory.
-uint8_t* memmem(uint8_t* src, int n, const uint8_t* sub, int m) {
-  return const_cast<uint8_t*>(FastSearch(src, n, sub, m));
+std::span<uint8_t> SearchMemory(std::span<uint8_t> src,
+                                std::span<const uint8_t> sub) {
+  if (src.empty() || sub.empty() || src.size() < sub.size()) {
+    return {};
+  }
+  auto it = std::search(src.begin(), src.end(),
+                        std::boyer_moore_searcher(sub.begin(), sub.end()));
+  if (it != src.end()) {
+    return src.subspan(std::distance(src.begin(), it));
+  }
+  return {};
 }
 
 std::wstring GetIniString(std::wstring_view section,
@@ -280,10 +229,20 @@ void ExecuteCommand(int id, HWND hwnd) {
   if (hwnd == 0) {
     hwnd = GetForegroundWindow();
   }
-  // hwnd = GetTopWnd(hwnd);
-  // hwnd = GetForegroundWindow();
-  // PostMessage(hwnd, WM_SYSCOMMAND, id, 0);
-  ::SendMessageTimeoutW(hwnd, WM_SYSCOMMAND, id, 0, 0, 1000, 0);
+  // A null hwnd would turn the PostMessage below into a thread message.
+  if (!hwnd) {
+    return;
+  }
+  // Browser commands are window-scoped. Callers often pass the HWND under the
+  // cursor (child widget / render host); route to the top-level frame.
+  if (const HWND root = ::GetAncestor(hwnd, GA_ROOT)) {
+    hwnd = root;
+  }
+  // Post, do not Send: frequently called from the UI-thread mouse hook
+  // (double-click close). A synchronous SendMessageTimeout can re-enter
+  // Chrome while the hook is still on the stack and break the next
+  // window gesture after close.
+  ::PostMessageW(hwnd, WM_SYSCOMMAND, id, 0);
 }
 
 void LaunchCommands(const std::wstring& get_commands) {
@@ -312,10 +271,150 @@ void LaunchCommands(const std::wstring& get_commands) {
   }
 }
 
-bool IsFullScreen(HWND hwnd) {
-  RECT windowRect;
-  return (GetWindowRect(hwnd, &windowRect) &&
-          (windowRect.left == 0 && windowRect.top == 0 &&
-           windowRect.right == GetSystemMetrics(SM_CXSCREEN) &&
-           windowRect.bottom == GetSystemMetrics(SM_CYSCREEN)));
+[[nodiscard]] bool IsChromeWindow(HWND hwnd) {
+  std::array<wchar_t, 256> class_name_buffer{};
+  const int length =
+      ::GetClassNameW(hwnd, class_name_buffer.data(),
+                      static_cast<int>(class_name_buffer.size()));
+  if (length == 0) {
+    return false;
+  }
+  const std::wstring_view class_name_view{class_name_buffer.data(),
+                                          static_cast<std::size_t>(length)};
+  constexpr std::wstring_view target_prefix = L"Chrome_WidgetWin_";
+  return class_name_view.starts_with(target_prefix);
+}
+
+namespace {
+
+// Modifier keys mapping
+constexpr std::pair<std::wstring_view, UINT> kModifierKeys[] = {
+    {L"shift", MOD_SHIFT},     {L"ctrl", MOD_CONTROL},
+    {L"control", MOD_CONTROL},  // alias
+    {L"alt", MOD_ALT},         {L"win", MOD_WIN},
+};
+
+// Special virtual keys mapping
+constexpr std::pair<std::wstring_view, UINT> kSpecialKeys[] = {
+    // Arrow keys
+    {L"left", VK_LEFT},
+    {L"right", VK_RIGHT},
+    {L"up", VK_UP},
+    {L"down", VK_DOWN},
+    {L"←", VK_LEFT},
+    {L"→", VK_RIGHT},
+    {L"↑", VK_UP},
+    {L"↓", VK_DOWN},
+    // Control keys
+    {L"esc", VK_ESCAPE},
+    {L"escape", VK_ESCAPE},  // alias
+    {L"tab", VK_TAB},
+    {L"backspace", VK_BACK},
+    {L"enter", VK_RETURN},
+    {L"return", VK_RETURN},  // alias
+    {L"space", VK_SPACE},
+    // System keys
+    {L"prtsc", VK_SNAPSHOT},
+    {L"printscreen", VK_SNAPSHOT},  // alias
+    {L"scroll", VK_SCROLL},
+    {L"pause", VK_PAUSE},
+    // Navigation keys
+    {L"insert", VK_INSERT},
+    {L"delete", VK_DELETE},
+    {L"del", VK_DELETE},  // alias
+    {L"home", VK_HOME},
+    {L"end", VK_END},
+    {L"pageup", VK_PRIOR},
+    {L"pgup", VK_PRIOR},  // alias
+    {L"pagedown", VK_NEXT},
+    {L"pgdn", VK_NEXT},  // alias
+};
+
+constexpr bool EqualsIgnoreCase(std::wstring_view a, std::wstring_view b) {
+  if (a.size() != b.size())
+    return false;
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (std::towlower(a[i]) != std::towlower(b[i]))  // case-insensitive
+      return false;
+  }
+  return true;
+}
+
+template <size_t N>
+constexpr std::optional<UINT> FindInKeyMap(
+    std::wstring_view key,
+    const std::pair<std::wstring_view, UINT> (&map)[N]) {
+  for (const auto& [name, code] : map) {
+    if (EqualsIgnoreCase(key, name))
+      return code;
+  }
+  return std::nullopt;
+}
+
+// Parse function key (F1-F24)
+std::optional<UINT> ParseFunctionKey(std::wstring_view key) {
+  if (key.size() < 2 || (key[0] != L'F' && key[0] != L'f'))
+    return std::nullopt;
+
+  auto num_part = key.substr(1);
+  if (num_part.empty() || !std::ranges::all_of(num_part, ::iswdigit))
+    return std::nullopt;
+
+  int fx = 0;
+  for (wchar_t c : num_part) {
+    fx = fx * 10 + (c - L'0');
+  }
+
+  if (fx >= 1 && fx <= 24)
+    return VK_F1 + fx - 1;
+  return std::nullopt;
+}
+
+// Parse single character key (A-Z, 0-9, symbols)
+std::optional<UINT> ParseCharacterKey(std::wstring_view key) {
+  if (key.size() != 1)
+    return std::nullopt;
+
+  wchar_t ch = key[0];
+  if (std::iswalnum(ch))
+    return static_cast<UINT>(std::towupper(ch));
+
+  // For other characters, use `VkKeyScan`
+  SHORT scan = ::VkKeyScanW(ch);
+  if (scan != -1)
+    return LOBYTE(scan);
+
+  return std::nullopt;
+}
+
+}  // namespace
+
+UINT ParseHotkeys(std::wstring_view keys, bool no_repeat) {
+  UINT modifiers = 0;
+  UINT virtual_key = 0;
+
+  for (const auto& part : std::views::split(keys, L'+')) {
+    std::wstring_view key(part.begin(), part.end());
+    if (key.empty())
+      continue;
+    if (auto mod = FindInKeyMap(key, kModifierKeys)) {
+      modifiers |= *mod;
+      continue;
+    }
+    if (auto vk = FindInKeyMap(key, kSpecialKeys)) {
+      virtual_key = *vk;
+      continue;
+    }
+    if (auto vk = ParseFunctionKey(key)) {
+      virtual_key = *vk;
+      continue;
+    }
+    if (auto vk = ParseCharacterKey(key))
+      virtual_key = *vk;
+  }
+
+  if (no_repeat)
+    modifiers |= MOD_NOREPEAT;
+
+  return MAKELPARAM(modifiers, virtual_key);
 }

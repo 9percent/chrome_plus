@@ -85,41 +85,26 @@ bool CheckHeader(uint8_t* buffer, PakEntry*& pak_entry, PakEntry*& end_entry) {
   return true;
 }
 
-[[maybe_unused]] void PakFind(uint8_t* buffer,
-                              uint8_t* pos,
-                              std::function<void(uint8_t*, uint32_t)> f) {
-  PakEntry* pak_entry = nullptr;
-  PakEntry* end_entry = nullptr;
-
-  if (!CheckHeader(buffer, pak_entry, end_entry)) {
-    return;
-  }
-
-  do {
-    PakEntry* next_entry = pak_entry + 1;
-    if (pos >= buffer + pak_entry->file_offset &&
-        pos <= buffer + next_entry->file_offset) {
-      f(buffer + pak_entry->file_offset,
-        next_entry->file_offset - pak_entry->file_offset);
-      break;
-    }
-
-    pak_entry = next_entry;
-  } while (pak_entry->resource_id != 0);
-}
 }  // namespace
 
-void TraversalGZIPFile(uint8_t* buffer,
-                       std::function<bool(uint8_t*, uint32_t, size_t&)>&& f) {
+uint16_t TraversalGZIPFile(uint8_t* buffer,
+                           std::function<bool(uint8_t*, uint32_t, size_t&)>&& f,
+                           uint16_t target_resource_id) {
   PakEntry* pak_entry = nullptr;
   PakEntry* end_entry = nullptr;
 
   if (!CheckHeader(buffer, pak_entry, end_entry)) {
-    return;
+    return 0;
   }
 
   do {
     PakEntry* next_entry = pak_entry + 1;
+    if (target_resource_id != 0 &&
+        pak_entry->resource_id != target_resource_id) {
+      pak_entry = next_entry;
+      continue;
+    }
+
     size_t old_size = next_entry->file_offset - pak_entry->file_offset;
 
     if (old_size < 10 * 1024) {
@@ -180,8 +165,36 @@ void TraversalGZIPFile(uint8_t* buffer,
           std::ranges::copy(src_span.subspan(10),
                             entry_data.begin() + 12 + extra_length);
         }
+        // Only one resource is the patch target; once the callback has handled
+        // it there is nothing left to find, so stop scanning the rest of the
+        // pak to avoid decompressing every remaining entry in each renderer
+        // process.
+        return pak_entry->resource_id;
       }
     }
     pak_entry = next_entry;
   } while (pak_entry->resource_id != 0);
+
+  return 0;
+}
+
+std::optional<PakResourceSlot> FindResourceSlot(uint8_t* buffer,
+                                                uint16_t resource_id) {
+  PakEntry* pak_entry = nullptr;
+  PakEntry* end_entry = nullptr;
+
+  if (!CheckHeader(buffer, pak_entry, end_entry)) {
+    return std::nullopt;
+  }
+
+  do {
+    PakEntry* next_entry = pak_entry + 1;
+    if (pak_entry->resource_id == resource_id) {
+      return PakResourceSlot{pak_entry->file_offset,
+                             next_entry->file_offset - pak_entry->file_offset};
+    }
+    pak_entry = next_entry;
+  } while (pak_entry->resource_id != 0);
+
+  return std::nullopt;
 }
