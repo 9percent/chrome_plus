@@ -33,6 +33,7 @@ class Config {
   bool IsKeepLastTab() const { return keep_last_tab_; }
   bool IsDoubleClickClose() const { return double_click_close_; }
   bool IsRightClickClose() const { return right_click_close_; }
+  bool IsRightClickNewTab() const { return right_click_newtab_; }
   bool IsWheelTab() const { return wheel_tab_; }
   bool IsWheelTabWhenPressRightButton() const {
     return wheel_tab_when_press_rbutton_;
@@ -83,6 +84,7 @@ class Config {
   bool keep_last_tab_;
   bool double_click_close_;
   bool right_click_close_;
+  bool right_click_newtab_;
   bool wheel_tab_;
   bool wheel_tab_when_press_rbutton_;
   bool hover_tab_;

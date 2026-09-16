@@ -21,8 +21,10 @@ FindTabHitResult(POINT pt, bool need_count, bool need_close_button);
 bool SelectTab(const TabHitResult& hit_result);
 [[nodiscard]] std::optional<int> FindTabCount(HWND hwnd);
 [[nodiscard]] bool IsOnTabBar(POINT pt);
+[[nodiscard]] bool IsOnNewTabButton(POINT pt);
 [[nodiscard]] bool IsOnBookmark(POINT pt);
 [[nodiscard]] bool IsOmniboxFocused();
+[[nodiscard]] std::optional<std::wstring> GetFocusedOmniboxText();
 [[nodiscard]] bool IsOnNewTab(HWND hwnd,
                               const std::vector<std::wstring>& extra_tab_names);
 

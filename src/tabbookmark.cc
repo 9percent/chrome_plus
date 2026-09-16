@@ -279,6 +279,111 @@ bool HandleRightClick(const MOUSEHOOKSTRUCT* pmouse) {
   return true;
 }
 
+// Current clipboard text (CF_UNICODETEXT), trimmed; `nullopt` when the
+// clipboard holds no usable text -- the caller then keeps Chrome's default
+// behavior.
+std::optional<std::wstring> GetClipboardText() {
+  if (!OpenClipboard(nullptr)) {
+    return std::nullopt;
+  }
+
+  std::optional<std::wstring> result;
+  if (const HANDLE data = GetClipboardData(CF_UNICODETEXT)) {
+    if (const auto* text = static_cast<const wchar_t*>(GlobalLock(data))) {
+      std::wstring_view view(text, GlobalSize(data) / sizeof(wchar_t));
+      // `GlobalSize` may over-report; cut at the embedded NUL instead.
+      if (const auto nul = view.find(L'\0'); nul != std::wstring_view::npos) {
+        view = view.substr(0, nul);
+      }
+      const auto begin = view.find_first_not_of(L" \t\r\n");
+      const auto end = view.find_last_not_of(L" \t\r\n");
+      if (begin != std::wstring_view::npos) {
+        result = std::wstring(view.substr(begin, end - begin + 1));
+      }
+      GlobalUnlock(data);
+    }
+  }
+  CloseClipboard();
+  return result;
+}
+
+constexpr UINT_PTR kPasteGoTimerId = 0x68764255;  // 'psGO'
+// Poll cadence and attempt budget for waiting on the new tab's omnibox focus.
+constexpr UINT kPasteGoIntervalMs = 50;
+constexpr int kPasteGoMaxAttempts = 40;  // 2s
+
+// Two-phase paste-and-go. Phase 1 waits for the new tab's omnibox focus and
+// pastes. Phase 2 waits for the pasted text to actually appear in the omnibox
+// (the paste is processed asynchronously; an Enter sent in the same tick can
+// land before the text is committed and be dropped) and then presses Enter.
+void CALLBACK PasteGoTimerProc(HWND hwnd, UINT, UINT_PTR event_id, DWORD) {
+  static int attempts = 0;
+  static bool pasted = false;
+  // The window and focus state must be re-checked here: the tab is still
+  // being created when the timer is armed, and the window may be gone by the
+  // time a tick lands.
+  const bool ready = IsWindow(hwnd) && IsChromeWindow(hwnd) &&
+                     GetForegroundWindow() == hwnd && IsOmniboxFocused();
+  if (!ready) {
+    // The window and focus state must be re-checked here: the tab is still
+    // being created when the timer is armed, and the window may be gone by
+    // the time a tick lands.
+    if (++attempts < kPasteGoMaxAttempts) {
+      return;
+    }
+  } else if (pasted) {
+    const auto text = GetFocusedOmniboxText();
+    if (!text || text->empty()) {
+      if (++attempts < kPasteGoMaxAttempts) {
+        return;
+      }
+    } else {
+      attempts = 0;
+      pasted = false;
+      KillTimer(hwnd, event_id);
+      SendKey(VK_RETURN);
+      return;
+    }
+  } else {
+    // The omnibox itself decides URL vs. search query, so pasted text is
+    // opened as a link when it is one and searched otherwise.
+    SendKey(VK_CONTROL, 'V');
+    pasted = true;
+    attempts = 0;  // give phase 2 its own attempt budget
+    return;
+  }
+
+  attempts = 0;
+  pasted = false;
+  KillTimer(hwnd, event_id);
+}
+
+// Right-click the New Tab button to paste-and-go the clipboard text in a new
+// tab: URLs open as links, other text becomes a search. Empty or non-text
+// clipboard falls through to the default behavior (Hold Shift to force it).
+bool HandleNewTabButtonRightClick(const MOUSEHOOKSTRUCT* pmouse) {
+  if (IsKeyPressed(VK_SHIFT) || !config.IsRightClickNewTab()) {
+    return false;
+  }
+
+  const POINT pt = pmouse->pt;
+  if (!IsOnNewTabButton(pt)) {
+    return false;
+  }
+
+  if (!GetClipboardText()) {
+    return false;
+  }
+
+  HWND hwnd = WindowFromPoint(pt);
+  // The new tab does not exist yet, so the omnibox is not focused at this
+  // moment; `PasteGoTimerProc` polls until it is before pasting.
+  ExecuteCommand(IDC_NEW_TAB, hwnd);
+  SetTimer(GetAncestor(hwnd, GA_ROOT), kPasteGoTimerId, kPasteGoIntervalMs,
+           PasteGoTimerProc);
+  return true;
+}
+
 // Preserve the last tab when the middle button is clicked on the tab.
 bool HandleMiddleClick(const MOUSEHOOKSTRUCT* pmouse) {
   if (!config.IsKeepLastTab()) {
@@ -451,6 +556,9 @@ bool TabBookmarkMouseHandler(WPARAM wParam, LPARAM lParam) {
         // suppress Chrome's context menu; the RBUTTONUP arrives after
         // WM_MOUSEWHEEL.
         wheel_tab_ing_with_rbutton = false;
+        return true;
+      } else if (HandleNewTabButtonRightClick(pmouse)) {
+        closing_tab_by_right = true;
         return true;
       } else if (HandleRightClick(pmouse)) {
         closing_tab_by_right = true;

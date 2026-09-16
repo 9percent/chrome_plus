@@ -1332,6 +1332,41 @@ bool IsOnTabBar(POINT pt) {
   return PtInRect(&region_rect, pt) != FALSE;
 }
 
+// Whether `pt` sits on the New Tab `TabStripControlButton`. Scoped to the
+// cached tab strip region and resolved by class name (not
+// `IUIAutomation::ElementFromPoint`) for the same HWND-routing reasons as
+// `IsOnTabBar` above.
+bool IsOnNewTabButton(POINT pt) {
+  UiaSession* session = GetUiaSession();
+  if (!session) {
+    return false;
+  }
+
+  const HWND hwnd = WindowFromPoint(pt);
+  const HWND root = hwnd ? GetAncestor(hwnd, GA_ROOT) : nullptr;
+  if (!root || !IsChromeWindow(root)) {
+    return false;
+  }
+
+  RECT region_rect;
+  TabUiCache* ui = GetValidatedTabUi(session, root, &region_rect);
+  if (!ui || !PtInRect(&region_rect, pt)) {
+    return false;
+  }
+
+  const auto button = FindFirstDescendantByClass(
+      ui->region, session->class_conditions.tab_strip_control_button);
+  if (!button) {
+    return false;
+  }
+
+  RECT button_rect;
+  if (FAILED(button->get_CurrentBoundingRectangle(&button_rect))) {
+    return false;
+  }
+  return PtInRect(&button_rect, pt) != FALSE;
+}
+
 bool IsOnBookmark(POINT pt) {
   const UiaSession* session = GetUiaSession();
   if (!session) {
@@ -1382,6 +1417,50 @@ bool IsOmniboxFocused() {
   }
 
   return HasAnyClassName(focused, {L"OmniboxViewViews", L"OmniboxResultView"});
+}
+
+// Text currently held by the focused omnibox edit, via the Value pattern;
+// `nullopt` when the omnibox is not focused or exposes no value. Used to
+// confirm an injected paste has landed before pressing Enter.
+std::optional<std::wstring> GetFocusedOmniboxText() {
+  const HWND focus = GetFocus();
+  std::array<wchar_t, 64> focus_class{};
+  if (!focus ||
+      !GetClassNameW(focus, focus_class.data(),
+                     static_cast<int>(focus_class.size())) ||
+      std::wstring_view(focus_class.data()) == L"Chrome_RenderWidgetHostHWND") {
+    return std::nullopt;
+  }
+
+  const UiaSession* session = GetUiaSession();
+  if (!session) {
+    return std::nullopt;
+  }
+
+  const auto focused = GetFocusedElement(*session);
+  if (!focused || !HasAnyClassName(focused, {L"OmniboxViewViews"})) {
+    return std::nullopt;
+  }
+
+  ComPtr<IUnknown> pattern;
+  if (FAILED(focused->GetCurrentPattern(UIA_ValuePatternId,
+                                        pattern.ReleaseAndGetAddressOf())) ||
+      !pattern) {
+    return std::nullopt;
+  }
+
+  ComPtr<IUIAutomationValuePattern> value;
+  if (FAILED(pattern->QueryInterface(IID_PPV_ARGS(value.ReleaseAndGetAddressOf())))) {
+    return std::nullopt;
+  }
+
+  BSTR text = nullptr;
+  if (FAILED(value->get_CurrentValue(&text)) || !text) {
+    return std::nullopt;
+  }
+  std::wstring result(text);
+  SysFreeString(text);
+  return result;
 }
 
 bool IsOnNewTab(HWND hwnd, const std::vector<std::wstring>& extra_tab_names) {

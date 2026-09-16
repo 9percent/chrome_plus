@@ -45,6 +45,9 @@ void Config::LoadConfig() {
                                                 1, GetIniPath().c_str()) != 0;
   right_click_close_ = ::GetPrivateProfileIntW(L"tabs", L"right_click_close", 0,
                                                GetIniPath().c_str()) != 0;
+  right_click_newtab_ = ::GetPrivateProfileIntW(
+                            L"tabs", L"right_click_newtab", 1,
+                            GetIniPath().c_str()) != 0;
   wheel_tab_ = ::GetPrivateProfileIntW(L"tabs", L"wheel_tab", 1,
                                        GetIniPath().c_str()) != 0;
   wheel_tab_when_press_rbutton_ =
