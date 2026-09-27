@@ -1,9 +1,29 @@
 # Chrome++ Next
-[![LICENSE](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg?style=for-the-badge&logo=github "LICENSE")](https://github.com/Bush2021/chrome_plus/blob/main/LICENSE) [![LAST COMMIT](https://img.shields.io/github/last-commit/Bush2021/chrome_plus?color=blue&logo=github&style=for-the-badge "LAST COMMIT")](https://github.com/Bush2021/chrome_plus/commits/main) [![STARS](https://img.shields.io/github/stars/Bush2021/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "STARS")](https://github.com/Bush2021/chrome_plus/stargazers) ![SIZES](https://img.shields.io/github/languages/code-size/Bush2021/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "SIZES")
+[![LICENSE](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg?style=for-the-badge&logo=github "LICENSE")](LICENSE) [![LAST COMMIT](https://img.shields.io/github/last-commit/9percent/chrome_plus?color=blue&logo=github&style=for-the-badge "LAST COMMIT")](https://github.com/9percent/chrome_plus/commits/main) [![STARS](https://img.shields.io/github/stars/9percent/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "STARS")](https://github.com/9percent/chrome_plus/stargazers) ![SIZES](https://img.shields.io/github/languages/code-size/9percent/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "SIZES")
 
 English | [简体中文](README.zh-CN.md)
 
 Chrome++ Next is a `version.dll` injection project for Google Chrome. It is loaded alongside `chrome.exe` and augments browser behavior at startup with tab, hotkey, portable, command-line, and policy-related features.
+
+## Repository Recovery (2026-09-28)
+The original `Bush2021/chrome_plus` repository is no longer accessible. This recovery preserves its commit identities, authorship, credits, and licenses. The recovered mainline baseline is `240777ff667f54baa2899291576f935a88b6b05d`, obtained from [nobug-project](https://github.com/nobug-project/chrome_plus) and corroborated by [ikly360](https://github.com/ikly360/chrome_plus) and [srhse5rh](https://github.com/srhse5rh/chrome_plus). The new recovery commit only updates repository/dependency links and these notes.
+
+Additional public histories are preserved under `recovered/<owner>/<branch>` (with a repository component where needed), and source tags under `recovered/<owner>/...`. Verified original tag names are also retained without overwriting conflicting fork tags. These are historical snapshots, not merged enhancements: notably, `recovered/benzBrake/main` contains eight fork-only commits beyond the baseline. Historical branches retain their original dependency URLs; use `main` for the repaired recursive clone.
+
+The [mini_gzip recovery](https://github.com/9percent/mini_gzip) preserves `master` at `2eee7df50ee8bda75070b5c40fe1e7022116503e`, recovered from [libsgh](https://github.com/libsgh/mini_gzip) and corroborated by [road0001-Forks-1](https://github.com/road0001-Forks-1/mini_gzip), with related [shuax](https://github.com/shuax/mini_gzip) history retained separately. Both gitlinks are unchanged: mini_gzip uses that exact commit, and [Microsoft Detours](https://github.com/microsoft/Detours) remains at `d644ce94e8c7f7f5a31591577c78134ea3ac1fae`.
+
+```sh
+git clone --recurse-submodules https://github.com/9percent/chrome_plus.git
+```
+
+After updating an existing checkout to the recovered mainline, refresh its cached submodule URLs:
+
+```sh
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+Recovery covers reachable public Git history, not deleted issues, pull-request discussions, Actions runs, or release binaries. The `1.18.2` tag was recovered from [smzhzy26](https://github.com/smzhzy26/chrome_plus) at the original version commit `232a2230d91496d40dcfafbcf40f11040ca36c91`; restoring a tag does not restore its release assets. Historical installer/setdll links and release automation are retained but may depend on unavailable upstream services.
 
 ## Overview
 - Targets Google Chrome on Windows.
@@ -17,7 +37,7 @@ Chrome++ Next is a `version.dll` injection project for Google Chrome. It is load
 - Reporting requirements are enforced in the GitHub Issues templates.
 
 ## Download
-- [Latest releases](https://github.com/Bush2021/chrome_plus/releases)
+- [Releases](https://github.com/9percent/chrome_plus/releases) (historical release binaries were not recovered).
 
 ## Installation
 - Put `version.dll` in the same directory as `chrome.exe`.

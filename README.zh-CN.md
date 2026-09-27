@@ -1,9 +1,29 @@
 # Chrome++ Next
-[![LICENSE](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg?style=for-the-badge&logo=github "LICENSE")](https://github.com/Bush2021/chrome_plus/blob/main/LICENSE) [![LAST COMMIT](https://img.shields.io/github/last-commit/Bush2021/chrome_plus?color=blue&logo=github&style=for-the-badge "LAST COMMIT")](https://github.com/Bush2021/chrome_plus/commits/main) [![STARS](https://img.shields.io/github/stars/Bush2021/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "STARS")](https://github.com/Bush2021/chrome_plus/stargazers) ![SIZES](https://img.shields.io/github/languages/code-size/Bush2021/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "SIZES")
+[![LICENSE](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg?style=for-the-badge&logo=github "LICENSE")](LICENSE) [![LAST COMMIT](https://img.shields.io/github/last-commit/9percent/chrome_plus?color=blue&logo=github&style=for-the-badge "LAST COMMIT")](https://github.com/9percent/chrome_plus/commits/main) [![STARS](https://img.shields.io/github/stars/9percent/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "STARS")](https://github.com/9percent/chrome_plus/stargazers) ![SIZES](https://img.shields.io/github/languages/code-size/9percent/chrome_plus?color=brightgreen&logo=github&style=for-the-badge "SIZES")
 
 简体中文 | [English](README.md)
 
 Chrome++ Next 是一个 `version.dll` 注入项目，会与 `chrome.exe` 一同加载，在浏览器启动时增强标签页、快捷键、便携化、命令行参数以及策略相关行为。
+
+## 仓库恢复说明（2026-09-28）
+原 `Bush2021/chrome_plus` 仓库已无法访问。本次恢复保留原提交 SHA、作者信息、致谢与许可证。主线基准为 `240777ff667f54baa2899291576f935a88b6b05d`，来自 [nobug-project](https://github.com/nobug-project/chrome_plus)，并由 [ikly360](https://github.com/ikly360/chrome_plus) 和 [srhse5rh](https://github.com/srhse5rh/chrome_plus) 交叉核对。新增的恢复提交只更新仓库及依赖链接和这些说明。
+
+其它公开历史保存在 `recovered/<owner>/<branch>` 分支下（必要时增加仓库名），来源标签隔离在 `recovered/<owner>/...` 下；已核实的原始标签也保留原名，不覆盖有冲突的 fork 标签。这些是历史快照，不代表已合并增强功能：例如 `recovered/benzBrake/main` 比基准多八个 fork 自有提交。历史分支保留原依赖地址；需要已修复的递归克隆时请使用 `main`。
+
+[mini_gzip 恢复仓库](https://github.com/9percent/mini_gzip) 的 `master` 保持为 `2eee7df50ee8bda75070b5c40fe1e7022116503e`，来源为 [libsgh](https://github.com/libsgh/mini_gzip)，并经 [road0001-Forks-1](https://github.com/road0001-Forks-1/mini_gzip) 核对；相关的 [shuax](https://github.com/shuax/mini_gzip) 历史单独保留。两个子模块的 gitlink 均未修改：mini_gzip 使用上述精确提交，[Microsoft Detours](https://github.com/microsoft/Detours) 仍为 `d644ce94e8c7f7f5a31591577c78134ea3ac1fae`。
+
+```sh
+git clone --recurse-submodules https://github.com/9percent/chrome_plus.git
+```
+
+已有检出更新到恢复后的主线后，请同步缓存的子模块地址：
+
+```sh
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+恢复范围是可达的公开 Git 历史，不包括已删除的 Issues、PR 讨论、Actions 记录及 Release 二进制附件。`1.18.2` 标签来自 [smzhzy26](https://github.com/smzhzy26/chrome_plus)，指向原版本提交 `232a2230d91496d40dcfafbcf40f11040ca36c91`；恢复标签不代表恢复了 Release 附件。历史安装器、setdll 链接及发布流程仍保留，可能依赖已不可用的上游服务。
 
 ## 项目简介
 - 面向 Windows 下的 Google Chrome。
@@ -17,7 +37,7 @@ Chrome++ Next 是一个 `version.dll` 注入项目，会与 `chrome.exe` 一同�
 - 具体反馈要求以 GitHub Issues 页面和表单为准。
 
 ## 获取
-- [Releases](https://github.com/Bush2021/chrome_plus/releases)
+- [Releases](https://github.com/9percent/chrome_plus/releases)（历史 Release 二进制附件未恢复）。
 
 ## 安装
 - 请确保将 `version.dll` 放在 `chrome.exe` 同一目录。
