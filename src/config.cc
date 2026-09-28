@@ -37,6 +37,8 @@ void Config::LoadConfig() {
       ::GetPrivateProfileIntW(L"general",
                               L"suppress_false_upgrade_notification", 0,
                               GetIniPath().c_str()) != 0;
+  default_taskbar_ = ::GetPrivateProfileIntW(L"general", L"default_taskbar", 0,
+                                             GetIniPath().c_str()) != 0;
 
   // tabs
   keep_last_tab_ = ::GetPrivateProfileIntW(L"tabs", L"keep_last_tab", 1,

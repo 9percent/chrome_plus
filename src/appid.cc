@@ -13,6 +13,7 @@
 
 #include "detours.h"
 
+#include "config.h"
 #include "utils.h"
 
 namespace {
@@ -171,6 +172,10 @@ HRESULT WINAPI MySHGetPropertyStoreForWindow(HWND hwnd,
 }  // namespace
 
 void SetAppId() {
+  if (config.IsDefaultTaskbar()) {
+    return;
+  }
+
   DetourTransactionBegin();
   DetourUpdateThread(GetCurrentThread());
   DetourAttach(

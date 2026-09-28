@@ -28,6 +28,7 @@ class Config {
   bool IsSuppressFalseUpgradeNotification() const {
     return suppress_false_upgrade_notification_;
   }
+  bool IsDefaultTaskbar() const { return default_taskbar_; }
 
   // tabs
   bool IsKeepLastTab() const { return keep_last_tab_; }
@@ -78,6 +79,7 @@ class Config {
   bool win32k_;
   bool ignore_policies_;
   bool suppress_false_upgrade_notification_;
+  bool default_taskbar_;
 
   // tabs
   bool keep_last_tab_;
